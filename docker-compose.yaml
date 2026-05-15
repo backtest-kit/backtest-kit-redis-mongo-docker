@@ -4,10 +4,9 @@ services:
   backtest:
     image: tripolskypetr/backtest-kit
     platform: linux/amd64
-    network_mode: host
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    container_name: pro
+    container_name: backtest-kit-redis-mongo-docker
     ports:
       - "60050:60050"
     restart: unless-stopped

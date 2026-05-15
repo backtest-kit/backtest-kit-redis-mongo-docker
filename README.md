@@ -70,13 +70,13 @@ npm run start -- --entry --backtest --ui ./build/index.cjs
 Live mode:
 
 ```bash
-npm run start -- --entry --live ./build/index.cjs
+npm run start -- --entry --live --ui ./build/index.cjs
 ```
 
 Paper mode:
 
 ```bash
-npm run start -- --entry --paper ./build/index.cjs
+npm run start -- --entry --paper --ui ./build/index.cjs
 ```
 
 ### Full docker deploy
@@ -84,7 +84,7 @@ npm run start -- --entry --paper ./build/index.cjs
 Bundles the strategy, runner, and `backtest-kit` container together. Reads `MODE` from env (`backtest` | `live` | `paper`):
 
 ```bash
-MODE=backtest ENTRY=1 STRATEGY_FILE=./build/index.cjs docker-compose up -d
+MODE=backtest ENTRY=1 UI=1 STRATEGY_FILE=./build/index.cjs docker-compose up -d
 docker-compose logs -f
 ```
 

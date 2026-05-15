@@ -7,7 +7,7 @@
     "start": "npm run build && node ./node_modules/@backtest-kit/cli/build/index.mjs",
     "start:debug": "npm run build && node --inspect-brk ./node_modules/@backtest-kit/cli/build/index.mjs",
     "start:repl": "dotenv -e .env -- npm run build && node -e \"require('./build/index.cjs')\" --interactive",
-    "start:docker": "npm run build && cross-env MODE=backtest ENTRY=1 STRATEGY_FILE=./build/index.cjs docker-compose up -d",
+    "start:docker": "npm run build && cross-env MODE=backtest ENTRY=1 UI=1 STRATEGY_FILE=./build/index.cjs docker-compose up -d",
     "stop:docker": "docker-compose down"
   },
   "keywords": [],
