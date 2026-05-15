@@ -225,7 +225,7 @@ docker/
 docker-compose.yaml             # main: backtest-kit container, mounts project as /workspace
 ```
 
-The main `docker-compose.yaml` uses `network_mode: host` so the container reaches MongoDB and Redis on the host's `127.0.0.1` (defaults in `params.ts`). Override via `.env` if your infrastructure runs elsewhere:
+The main `docker-compose.yaml` uses `extra_hosts: host.docker.internal:host-gateway` so the container reaches MongoDB and Redis on the host machine. Use `host.docker.internal` instead of `127.0.0.1` in your connection strings, or override via `.env` if your infrastructure runs elsewhere:
 
 ```bash
 CC_MONGO_CONNECTION_STRING=mongodb://prod-mongo:27017/backtest-pro
