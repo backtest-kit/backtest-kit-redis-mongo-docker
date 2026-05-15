@@ -185,15 +185,6 @@ public findByContext = async (symbol, strategyName, exchangeName) => {
 - **Cache miss (cold start, eviction, Redis restart):** one Mongo `findOne` by indexed filter + one Redis `SET` to backfill
 - **After `upsert`:** the cache is updated synchronously in the same critical section, so the next `findByContext` always hits the cache
 
-### Why TTL = `-1`
-
-`BaseMap(REDIS_KEY, -1)` disables TTL expiration on cache entries — the cache is **authoritative for id lookups** and is invalidated only by the writing path (`set*Id` after upsert, `delete*Id` on `clearBucket`). If Redis crashes and loses entries, the read path automatically falls back to Mongo and backfills.
-
-The default `BaseMap` TTL is `5 minutes` (`DEFAULT_TTL_EXPIRE_SECONDS = 5 * 60`), but every adapter explicitly opts out. This is the right trade-off because:
-- Mongo writes are durable, so cache entries don't go stale
-- Backtests iterate through historical time and re-touch the same context keys repeatedly — expiring entries would cause repeated Mongo fallbacks
-- Memory pressure is bounded by the number of distinct context keys, not by time
-
 ## 🛡️ Look-Ahead Bias Protection (`when: Date`)
 
 `backtest-kit` 9.0+ added a `when: Date` argument to every adapter `write*` method (and to `read*` for adapters that affect signal logic: Risk, Partial, Breakeven). The argument carries the **logical simulation timestamp** at which the write happens.
