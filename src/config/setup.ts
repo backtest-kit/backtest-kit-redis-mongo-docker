@@ -2,6 +2,7 @@ import {
   CandleInterval,
   CandleData,
   RiskData,
+  StrategyData,
   PartialData,
   BreakevenData,
   StorageData,
@@ -23,6 +24,8 @@ import {
   IPersistRiskInstance,
   PersistScheduleAdapter,
   IPersistScheduleInstance,
+  PersistStrategyAdapter,
+  IPersistStrategyInstance,
   PersistPartialAdapter,
   IPersistPartialInstance,
   PersistBreakevenAdapter,
@@ -174,6 +177,27 @@ PersistScheduleAdapter.usePersistScheduleAdapter(class implements IPersistSchedu
   }
   async writeScheduleData(scheduleRow: IScheduledSignalRow | null): Promise<void> {
     await ioc.scheduleDbService.upsert(this.symbol, this.strategyName, this.exchangeName, scheduleRow);
+  }
+});
+
+PersistStrategyAdapter.usePersistStrategyAdapter(class implements IPersistStrategyInstance {
+  constructor(
+    readonly symbol: string,
+    readonly strategyName: string,
+    readonly exchangeName: string,
+  ) {}
+  async waitForInit(initial: boolean) {
+    if (!initial) {
+      return;
+    }
+    await waitForInfra();
+  }
+  async readStrategyData(): Promise<StrategyData | null> {
+    const row = await ioc.strategyDbService.findByContext(this.symbol, this.strategyName, this.exchangeName);
+    return row ? row.payload : null;
+  }
+  async writeStrategyData(strategyRow: StrategyData | null): Promise<void> {
+    await ioc.strategyDbService.upsert(this.symbol, this.strategyName, this.exchangeName, strategyRow);
   }
 });
 
