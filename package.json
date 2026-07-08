@@ -1,5 +1,5 @@
 {
-  "name": "backtest-kit-redis-mongo-docker",
+  "name": "backtest-kit-redis-postgres-pgpool-docker",
   "version": "1.0.0",
   "private": true,
   "scripts": {

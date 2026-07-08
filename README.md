@@ -1,8 +1,8 @@
 <img src="https://github.com/tripolskypetr/backtest-kit/raw/refs/heads/master/assets/consciousness.svg" height="45px" align="right">
 
-# 🧿 backtest-kit-redis-mongo-docker
+# 🧿 backtest-kit-redis-postgres-pgpool-docker
 
-> A production-grade integration of [backtest-kit](https://github.com/tripolskypetr/backtest-kit) that replaces the default file-based `./dump/` persistence with **MongoDB** as the source of truth and **Redis** as an O(1) lookup cache, packaged with `docker-compose` for one-command deploys.
+> A production-grade integration of [backtest-kit](https://github.com/tripolskypetr/backtest-kit) that replaces the default file-based `./dump/` persistence with **PostgreSQL** as the source of truth and **Redis** as an O(1) lookup cache, packaged with `docker-compose` for one-command deploys.
 
 ![screenshot](https://raw.githubusercontent.com/tripolskypetr/backtest-kit/HEAD/assets/screenshots/screenshot16.png)
 
@@ -11,7 +11,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue)]()
 [![Build](https://github.com/tripolskypetr/backtest-kit/actions/workflows/webpack.yml/badge.svg)](https://github.com/tripolskypetr/backtest-kit/actions/workflows/webpack.yml)
 
-This project ships **15 custom Persist adapters** that implement the full backtest-kit `IPersist*Instance` contract on top of MongoDB + Redis. Strategy code, runners, and the CLI entrypoint stay unchanged — only the persistence layer is swapped.
+This project ships **16 custom Persist adapters** that implement the full backtest-kit `IPersist*Instance` contract on top of PostgreSQL (via TypeORM) + Redis. Strategy code, runners, and the CLI entrypoint stay unchanged — only the persistence layer is swapped.
 
 📚 **[API Reference](https://backtest-kit.github.io/documents/example_02_first_backtest.html)** | 🌟 **[Quick Start](https://github.com/tripolskypetr/backtest-kit/tree/master/example)** | **📰 [Article](https://backtest-kit.github.io/documents/article_07_ai_news_trading_signals.html)**
 
@@ -20,12 +20,14 @@ This project ships **15 custom Persist adapters** that implement the full backte
 
 ### Local run (host node, dockerized infrastructure)
 
-Start MongoDB and Redis in containers:
+Start the PostgreSQL cluster and Redis in containers:
 
 ```bash
-docker-compose -f docker/mongodb/docker-compose.yaml up -d
+docker-compose -f docker/pgpool/docker-compose.yaml up -d
 docker-compose -f docker/redis/docker-compose.yaml up -d
 ```
+
+`docker/pgpool` boots a whole cluster — 1 primary + 2 streaming replicas behind Pgpool-II — on `:5432` (see [Docker Layout](#-docker-layout)). The app connects to that single port; writes go to the primary, reads are load-balanced across the replicas. First boot takes ~60–90 s while the replicas clone.
 
 Run a backtest:
 
@@ -62,7 +64,7 @@ npm run stop:docker
 ```
 
 
-## 🗂️ The 15 Persist Adapters
+## 🗂️ The 16 Persist Adapters
 
 Each adapter implements the corresponding `IPersist*Instance` interface from `backtest-kit` and is registered in [src/config/setup.ts](src/config/setup.ts). All adapters share the same skeleton:
 
@@ -71,18 +73,19 @@ PersistXAdapter.usePersistXAdapter(class implements IPersistXInstance {
   constructor(/* context fields from backtest-kit */) {}
   async waitForInit(initial: boolean) {
     if (!initial) return;
-    await waitForInfra();        // gate first-touch on Mongo + Redis ready
+    await waitForInfra();        // gate first-touch on Postgres + Redis ready
   }
   async readXData(...) { return await ioc.xDbService.findByContext(...); }
   async writeXData(..., when: Date) { await ioc.xDbService.upsert(..., when); }
 });
 ```
 
-| Adapter | Collection | Context key (= unique index) | Purpose |
+| Adapter | Table | Context key (= unique index) | Purpose |
 |---|---|---|---|
 | **Candle** | `candle-items` | `(symbol, interval, timestamp)` | OHLCV cache; immutable inserts |
 | **Signal** | `signal-items` | `(symbol, strategyName, exchangeName)` | Live signal state per context |
 | **Schedule** | `schedule-items` | `(symbol, strategyName, exchangeName)` | Pending scheduled signal |
+| **Strategy** | `strategy-items` | `(symbol, strategyName, exchangeName)` | Persistent strategy state per context |
 | **Risk** | `risk-items` | `(riskName, exchangeName)` | Active risk positions snapshot |
 | **Partial** | `partial-items` | `(symbol, strategyName, exchangeName, signalId)` | Partial profit/loss levels per signal |
 | **Breakeven** | `breakeven-items` | `(symbol, strategyName, exchangeName, signalId)` | Breakeven reached flag |
@@ -94,60 +97,77 @@ PersistXAdapter.usePersistXAdapter(class implements IPersistXInstance {
 | **Memory** | `memory-items` | `(signalId, bucketName, memoryId)` | Per-signal memory store (soft-delete) |
 | **Recent** | `recent-items` | `(symbol, strategyName, exchangeName, frameName, backtest)` | Last public signal per context |
 | **State** | `state-items` | `(signalId, bucketName)` | Per-signal state buckets |
-| **Session** | `session-items` | `(strategyName, exchangeName, frameName)` | One session per running strategy |
+| **Session** | `session-items` | `(strategyName, exchangeName, frameName, symbol, backtest)` | One session per running strategy |
 
 
 ## ⚛️ Atomicity & Read-After-Write Guarantee
 
-`backtest-kit` is **designed with a write durability contract**: after `writeXData(...)` returns, the very next `readXData(...)` must see the just-written value. The default file-based persist satisfies this trivially via `fs.writeFile` + `fs.readFile`. A naïve Mongo implementation — `findByContext → if existing update else create` — does **not** satisfy this contract under concurrent access: two parallel writers both hit "no existing", both attempt insert, second one crashes with `E11000 duplicate key`. The framework then re-fetches from the exchange, retries the write, loops forever, or silently corrupts state.
+`backtest-kit` is **designed with a write durability contract**: after `writeXData(...)` returns, the very next `readXData(...)` must see the just-written value. The default file-based persist satisfies this trivially via `fs.writeFile` + `fs.readFile`. A naïve SQL implementation — `findByContext → if existing update else insert` — does **not** satisfy this contract under concurrent access: two parallel writers both see "no existing row", both attempt insert, the second one crashes with a unique-constraint violation. The framework then re-fetches from the exchange, retries the write, loops forever, or silently corrupts state.
 
 ### How we solve it
 
-Every `upsert` in this project goes through a **single atomic round-trip** to MongoDB:
+Every `upsert` in this project goes through a **single atomic round-trip** to PostgreSQL — one `INSERT … ON CONFLICT … DO UPDATE … RETURNING *` statement, no read-then-write:
 
 ```ts
 // from src/lib/services/db/SignalDbService.ts
 public upsert = async (symbol, strategyName, exchangeName, payload) => {
-  const filter = { symbol, strategyName, exchangeName };  // matches the unique index
-  const document = await SignalModel.findOneAndUpdate(
-    filter,
-    { $set: { payload } },
-    { upsert: true, new: true, setDefaultsOnInsert: true },
-  );
-  const result = readTransform(document.toJSON()) as ISignalRowDoc;
+  const repo = await this.repo<ISignalRowDoc>();
+  const { raw } = await repo
+    .createQueryBuilder()
+    .insert()
+    .values({ symbol, strategyName, exchangeName, payload })
+    .orUpdate(["payload"], ["symbol", "strategyName", "exchangeName"])  // conflict target = unique index
+    .returning("*")
+    .execute();
+  const result = raw[0] as ISignalRowDoc;
   await this.signalCacheService.setSignalId(result);     // Redis: ctx-key → id
 };
 ```
 
 Key properties of this pattern:
 
-1. **Filter shape == unique index shape.** Every collection has a Mongoose unique compound index whose fields are exactly the context key fields. MongoDB rejects all but one concurrent insert at the storage engine level — no E11000 leaks to the application.
-2. **`$set` for mutable fields, never `$setOnInsert` for the payload.** Subsequent writes to the same context key are *updates*, not no-ops. The exception is `CandleDbService` where candles are immutable and use `$setOnInsert` to preserve the first-written values.
-3. **`new: true`** returns the just-mutated document. The id is fed to the Redis cache immediately, so the next `findByContext` is O(1).
-4. **`setDefaultsOnInsert: true`** ensures Mongoose schema defaults (`createDate`, `updatedDate`, `removed: false`) are applied on insert paths.
+1. **Conflict target == unique index shape.** Every table has a unique compound index whose columns are exactly the context key fields. PostgreSQL serializes concurrent inserts on that key at the storage engine level — the loser of the race takes the `DO UPDATE` branch instead of throwing, so no unique-violation ever leaks to the application.
+2. **`DO UPDATE SET payload = EXCLUDED.payload`, not a no-op.** Subsequent writes to the same context key are real *updates*. The exception is `CandleDbService`, where candles are immutable: it uses a no-op `DO UPDATE SET symbol = EXCLUDED.symbol` so the OHLCV columns are never overwritten while the row is still returned (insert-only, but always readable).
+3. **`RETURNING *`** yields the just-written row in the same statement. Its id is fed to the Redis cache immediately, so the next `findByContext` is O(1) — and, crucially, the cache is seeded from the returned row, **never** from a follow-up `SELECT` that could be routed to a lagging replica.
+4. **uuid primary keys with `gen_random_uuid()`** and TypeORM `createDate`/`updateDate` columns are applied on insert automatically — no application-side id or timestamp bookkeeping.
 
-For soft-delete operations (Measure, Interval, Memory), a parallel atomic pattern is used:
+For soft-delete operations (Measure, Interval, Memory), a parallel atomic pattern is used — a single server-side `UPDATE` with `jsonb_set`, never a read-modify-write:
 
 ```ts
 public softRemove = async (bucket, entryKey) => {
-  const document = await IntervalModel.findOneAndUpdate(
-    { bucket, entryKey },
-    { $set: { removed: true, "payload.removed": true } },
-    { new: true },
-  );
-  if (document) await this.intervalCacheService.setIntervalId(...);
+  const repo = await this.repo<IIntervalRow>();
+  const { raw } = await repo
+    .createQueryBuilder()
+    .update()
+    .set({
+      removed: true,
+      payload: () => `jsonb_set("payload", '{removed}', 'true')`,  // flag flipped in-place, server-side
+    })
+    .where({ bucket, entryKey })
+    .returning("*")
+    .execute();
+  const saved = raw[0];
+  if (saved) await this.intervalCacheService.setIntervalId(saved);
 };
 ```
 
-The document is never physically deleted — `listKeys` filters on `removed: false` to skip tombstones. This mirrors the soft-delete semantics of the default file-based `PersistMeasureInstance` / `PersistIntervalInstance` / `PersistMemoryInstance` ([Persist.ts:3304](backtest-kit/src/classes/Persist.ts#L3304)).
+The row is never physically deleted — `listKeys` filters on `removed = false` to skip tombstones. Because the new value is computed on the server (`jsonb_set`) inside one statement, there is no `SELECT`-then-`save` window where a concurrent upsert could be lost. This mirrors the soft-delete semantics of the default file-based `PersistMeasureInstance` / `PersistIntervalInstance` / `PersistMemoryInstance`.
+
+### The single-node atomicity illusion
+
+There is a subtle trap that only surfaces on a cluster. A lone PostgreSQL instance is **one process**: all concurrency is arbitrated internally by row locks and MVCC — effectively "atomicity through one global mutex". On such a node, even a sloppy `write` followed by a **separate** `SELECT` appears correct, because that `SELECT` hits the very same process that just committed. It *looks* atomic.
+
+Add read replicas and the illusion breaks. Writes go to the primary, but reads are load-balanced onto asynchronous replicas that lag behind by a few milliseconds. Now a `write` + follow-up `SELECT` can be routed to a replica that has **not yet received** the commit, and the read returns a stale value (or `relation does not exist` right after schema creation) — silently violating the read-after-write contract. Code that passed every test on a single node corrupts state in production.
+
+This is exactly why the two patterns above never do a follow-up read: the written row comes back in the **same** statement via `RETURNING`, and the Redis cache is seeded from it. It is also why the dev environment ([docker/pgpool](docker/pgpool)) runs a **real cluster with two replicas** rather than a single Postgres container — so any accidental read-after-write dependency is caught in development, not in prod. A one-node dev database would hide it behind the global-mutex illusion.
 
 ## ⚡ Redis as O(1) ID Cache
 
-MongoDB queries on an indexed compound key are fast (O(log n) on the B-tree), but `backtest-kit` performs **thousands of read-by-context-key per second** during backtests. Redis turns that into O(1) lookups.
+PostgreSQL queries on an indexed compound key are fast (O(log n) on the B-tree), but `backtest-kit` performs **thousands of read-by-context-key per second** during backtests. Redis turns that into O(1) lookups.
 
 ### The pattern
 
-For each domain there is a `*CacheService` that extends `BaseMap` ([src/lib/common/BaseMap.ts](src/lib/common/BaseMap.ts)) — a thin wrapper around `ioredis` that gives a string-keyed map API (`get`, `set`, `delete`, `has`, `keys`, `values`, `toArray`, `iterate`, `size`) on top of Redis keys namespaced by a service prefix.
+For each domain there is a `*CacheService` that extends `BaseMap` ([src/lib/common/BaseMap.ts](src/lib/common/BaseMap.ts)) — a thin wrapper around `ioredis` that gives a string-keyed map API (`get`, `set`, `delete`, `has`, `keys`, `values`, `toArray`, `iterate`, `size`) on top of Redis keys namespaced by a service prefix. The cache stores only the row's `id` (a uuid string), never the document itself.
 
 ```ts
 // src/lib/services/cache/SignalCacheService.ts
@@ -171,46 +191,57 @@ export class SignalCacheService extends BaseMap(REDIS_KEY, -1) {  // -1 = no TTL
 
 ```ts
 public findByContext = async (symbol, strategyName, exchangeName) => {
-  try {
-    const cachedId = await this.signalCacheService.getSignalId(...);
-    if (cachedId) return await super.findById(cachedId);   // ← O(1) Redis + O(1) Mongo by _id
-  } catch { void 0; }
-  // Cache miss: fall back to Mongo by full filter, then backfill Redis.
+  const cachedId = await this.signalCacheService.getSignalId(...);
+  if (cachedId) {
+    const cached = await super.findByFilter({ id: cachedId });   // ← O(1) Redis + PK lookup
+    if (cached) return cached;
+  }
+  // Cache miss: fall back to Postgres by full filter, then backfill Redis.
   const result = await super.findByFilter({ symbol, strategyName, exchangeName });
   if (result) await this.signalCacheService.setSignalId(result);
   return result;
 };
 ```
 
-- **Cache hit (steady state):** one Redis `GET` + one Mongo `findById(_id)` — both O(1)
-- **Cache miss (cold start, eviction, Redis restart):** one Mongo `findOne` by indexed filter + one Redis `SET` to backfill
-- **After `upsert`:** the cache is updated synchronously in the same critical section, so the next `findByContext` always hits the cache
+- **Cache hit (steady state):** one Redis `GET` + one Postgres lookup by primary key — both O(1)
+- **Cache miss (cold start, eviction, Redis restart):** one Postgres `SELECT` by indexed filter + one Redis `SET` to backfill
+- **After `upsert`:** the cache is updated synchronously from the `RETURNING` row in the same critical section, so the next `findByContext` always hits the cache
 
 ## 🛡️ Look-Ahead Bias Protection (`when: Date`)
 
 `backtest-kit` 9.0+ added a `when: Date` argument to every adapter `write*` method (and to `read*` for adapters that affect signal logic: Risk, Partial, Breakeven). The argument carries the **logical simulation timestamp** at which the write happens.
 
-For adapters that touch signal-affecting state (Risk, Partial, Breakeven, Recent, State, Session, Memory, Interval), the corresponding Mongoose schema has an indexed `when: Number` column:
+For adapters that touch signal-affecting state (Risk, Partial, Breakeven, Recent, State, Session, Memory, Interval), the corresponding entity has a `when` column stored as `bigint` (epoch milliseconds). A shared `ValueTransformer` keeps the JS-visible value a plain `number`, since the `pg` driver returns `bigint` as a string:
 
 ```ts
 // src/schema/State.schema.ts
-const StateSchema = new Schema({
-  signalId: { type: String, required: true, index: true },
-  bucketName: { type: String, required: true, index: true },
-  payload: { type: Schema.Types.Mixed, required: true },
-  when: { type: Number, required: true, index: true },  // ms since epoch
+const StateModel = new EntitySchema<IStateRow>({
+  name: "state-items",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    signalId: { type: String },
+    bucketName: { type: String },
+    payload: { type: "jsonb" },                                  // typed by the domain payload
+    when: { type: "bigint", transformer: epochTransformer },     // ms since epoch, read back as number
+    createDate: { type: "timestamptz", createDate: true },
+    updatedDate: { type: "timestamptz", updateDate: true },
+  },
+  indices: [{ name: "state_items_uq", columns: ["signalId", "bucketName"], unique: true }],
 });
 ```
 
-The DbService converts `Date → ms` and stores it via `$set` on every upsert:
+The DbService converts `Date → ms` and writes it in the same atomic upsert:
 
 ```ts
 public upsert = async (signalId, bucketName, payload, when) => {
-  const document = await StateModel.findOneAndUpdate(
-    { signalId, bucketName },
-    { $set: { payload, when: when.getTime() } },
-    { upsert: true, new: true, setDefaultsOnInsert: true },
-  );
+  const repo = await this.repo<IStateRow>();
+  const { raw } = await repo
+    .createQueryBuilder()
+    .insert()
+    .values({ signalId, bucketName, payload, when: when.getTime() })
+    .orUpdate(["payload", "when"], ["signalId", "bucketName"])
+    .returning("*")
+    .execute();
   // ...
 };
 ```
@@ -221,20 +252,23 @@ This lets backtest-kit's internal look-ahead-bias filter (which lives upstream o
 
 ```
 docker/
-  mongodb/docker-compose.yaml   # mongodb:8.0.4 on :27017, volume ./mongo_data
+  pgpool/docker-compose.yaml    # all-in-one cluster: primary + 2 replicas + Pgpool-II on :5432
+  postgres/docker-compose.yaml  # single postgres:16-alpine on :5432 (simple/CI use)
   redis/docker-compose.yaml     # redis:7.4.1 on :6379, password=mysecurepassword
 docker-compose.yaml             # main: backtest-kit container, mounts project as /workspace
 ```
 
-The main `docker-compose.yaml` uses `extra_hosts: host.docker.internal:host-gateway` so the container reaches MongoDB and Redis on the host machine. Use `host.docker.internal` instead of `127.0.0.1` in your connection strings, or override via `.env` if your infrastructure runs elsewhere:
+The main `docker-compose.yaml` uses `extra_hosts: host.docker.internal:host-gateway` so the container reaches PostgreSQL and Redis on the host machine. Use `host.docker.internal` instead of `127.0.0.1` in your connection strings, or override via `.env` if your infrastructure runs elsewhere:
 
 ```bash
-CC_MONGO_CONNECTION_STRING=mongodb://prod-mongo:27017/backtest-pro
+CC_POSTGRES_CONNECTION_STRING=postgres://backtest:mysecurepassword@prod-postgres:5432/backtest-pro
 CC_REDIS_HOST=prod-redis
 CC_REDIS_PORT=6379
 CC_REDIS_USER=default
 CC_REDIS_PASSWORD=...
 ```
+
+The schema is created automatically on first connect (TypeORM `synchronize: true`), so there is no manual migration step — the tables and unique indexes appear when the app boots against an empty database.
 
 Container env vars consumed by `@backtest-kit/cli`:
 
@@ -259,7 +293,7 @@ const main = async () => {
   const { values } = getArgs();
   if (!values.entry || !values.backtest) return;
 
-  await ioc.mongoService.waitForInit();
+  await ioc.postgresService.waitForInit();
   await ioc.redisService.waitForInit();
   await waitForReady(true);
 
