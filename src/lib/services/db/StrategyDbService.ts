@@ -1,6 +1,5 @@
 import BaseCRUD from "../../common/BaseCRUD";
 import { IStrategyRow, StrategyModel } from "../../../schema/Strategy.schema";
-import { readTransform } from "../../../utils/readTransform";
 import { inject } from "../../core/di";
 import { TYPES } from "../../core/types";
 import { LoggerService } from "../base/LoggerService";
@@ -18,13 +17,15 @@ export class StrategyDbService extends BaseCRUD(StrategyModel) {
     payload: StrategyData | null,
   ): Promise<void> => {
     this.loggerService.log("strategyDbService upsert", { symbol, strategyName, exchangeName });
-    const filter = { symbol, strategyName, exchangeName };
-    const document = await StrategyModel.findOneAndUpdate(
-      filter,
-      { $set: { payload } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-    const result = readTransform(document.toJSON()) as unknown as IStrategyRow;
+    const repo = await this.repo<IStrategyRow>();
+    const { raw } = await repo
+      .createQueryBuilder()
+      .insert()
+      .values({ symbol, strategyName, exchangeName, payload })
+      .orUpdate(["payload"], ["symbol", "strategyName", "exchangeName"])
+      .returning("*")
+      .execute();
+    const result = raw[0] as IStrategyRow;
     await this.strategyCacheService.setStrategyId(result);
   };
 

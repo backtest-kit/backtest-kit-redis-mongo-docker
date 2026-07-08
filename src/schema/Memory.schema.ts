@@ -1,5 +1,6 @@
-import mongoose, { Document, Schema } from "mongoose";
+import { EntitySchema } from "typeorm";
 import { MemoryData } from "backtest-kit";
+import { epochTransformer } from "../utils/epochTransformer";
 
 interface IMemoryDto {
   signalId: string;
@@ -10,31 +11,32 @@ interface IMemoryDto {
   when: number;
 }
 
-interface MemoryDocument extends IMemoryDto, Document {}
-
 interface IMemoryRow extends IMemoryDto {
   id: string;
   createDate: Date;
   updatedDate: Date;
 }
 
-const MemorySchema: Schema<MemoryDocument> = new Schema(
-  {
-    signalId: { type: String, required: true, index: true },
-    bucketName: { type: String, required: true, index: true },
-    memoryId: { type: String, required: true, index: true },
-    payload: { type: Schema.Types.Mixed, required: true },
-    removed: { type: Boolean, required: true, default: false, index: true },
-    when: { type: Number, required: true, index: true },
+const MemoryModel = new EntitySchema<IMemoryRow>({
+  name: "memory-items",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    signalId: { type: String },
+    bucketName: { type: String },
+    memoryId: { type: String },
+    payload: { type: "jsonb" },
+    removed: { type: "boolean", default: false },
+    when: { type: "bigint", transformer: epochTransformer },
+    createDate: { type: "timestamptz", createDate: true },
+    updatedDate: { type: "timestamptz", updateDate: true },
   },
-  { timestamps: { createdAt: "createDate", updatedAt: "updatedDate" }, minimize: false }
-);
-
-MemorySchema.index(
-  { signalId: 1, bucketName: 1, memoryId: 1 },
-  { unique: true }
-);
-
-const MemoryModel = mongoose.model<MemoryDocument>("memory-items", MemorySchema);
+  indices: [
+    {
+      name: "memory_items_uq",
+      columns: ["signalId", "bucketName", "memoryId"],
+      unique: true,
+    },
+  ],
+});
 
 export { MemoryModel, IMemoryDto, IMemoryRow };

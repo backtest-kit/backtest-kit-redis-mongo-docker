@@ -1,6 +1,5 @@
 import BaseCRUD from "../../common/BaseCRUD";
 import { INotificationRow, NotificationModel } from "../../../schema/Notification.schema";
-import { readTransform } from "../../../utils/readTransform";
 import { inject } from "../../core/di";
 import { TYPES } from "../../core/types";
 import { LoggerService } from "../base/LoggerService";
@@ -19,13 +18,15 @@ export class NotificationDbService extends BaseCRUD(NotificationModel) {
     payload: NotificationPayload,
   ): Promise<void> => {
     this.loggerService.log("notificationDbService upsert", { backtest, notificationId });
-    const filter = { backtest, notificationId };
-    const document = await NotificationModel.findOneAndUpdate(
-      filter,
-      { $set: { payload } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-    const result = readTransform(document.toJSON()) as unknown as INotificationRow;
+    const repo = await this.repo<INotificationRow>();
+    const { raw } = await repo
+      .createQueryBuilder()
+      .insert()
+      .values({ backtest, notificationId, payload })
+      .orUpdate(["payload"], ["backtest", "notificationId"])
+      .returning("*")
+      .execute();
+    const result = raw[0] as INotificationRow;
     await this.notificationCacheService.setNotificationId(result);
   };
 
@@ -36,7 +37,7 @@ export class NotificationDbService extends BaseCRUD(NotificationModel) {
     this.loggerService.log("notificationDbService findByNotificationId", { backtest, notificationId });
     const cachedId = await this.notificationCacheService.getNotificationId(backtest, notificationId);
     if (cachedId) {
-      const cached = await super.findByFilter({ _id: cachedId }) as INotificationRow | null;
+      const cached = await super.findByFilter({ id: cachedId }) as INotificationRow | null;
       if (cached) {
         return cached;
       }
@@ -50,10 +51,7 @@ export class NotificationDbService extends BaseCRUD(NotificationModel) {
 
   public listByMode = async (backtest: boolean): Promise<INotificationRow[]> => {
     this.loggerService.log("notificationDbService listByMode", { backtest });
-    const documents = await NotificationModel.find({ backtest })
-      .sort({ createDate: -1 })
-      .limit(LIST_LIMIT);
-    return documents.map((doc) => readTransform(doc.toJSON())) as unknown as INotificationRow[];
+    return await super.findAll({ backtest }, LIST_LIMIT, { createDate: "DESC" }) as INotificationRow[];
   };
 }
 

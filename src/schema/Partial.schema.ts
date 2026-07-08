@@ -1,5 +1,6 @@
-import mongoose, { Document, Schema } from "mongoose";
+import { EntitySchema } from "typeorm";
 import { PartialData } from "backtest-kit";
+import { epochTransformer } from "../utils/epochTransformer";
 
 interface IPartialDto {
   symbol: string;
@@ -10,31 +11,32 @@ interface IPartialDto {
   when: number;
 }
 
-interface PartialDocument extends IPartialDto, Document {}
-
 interface IPartialRow extends IPartialDto {
   id: string;
   createDate: Date;
   updatedDate: Date;
 }
 
-const PartialSchema: Schema<PartialDocument> = new Schema(
-  {
-    symbol: { type: String, required: true, index: true },
-    strategyName: { type: String, required: true, index: true },
-    exchangeName: { type: String, required: true, index: true },
-    signalId: { type: String, required: true, index: true },
-    payload: { type: Schema.Types.Mixed, required: true, default: {} },
-    when: { type: Number, required: true, index: true },
+const PartialModel = new EntitySchema<IPartialRow>({
+  name: "partial-items",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    symbol: { type: String },
+    strategyName: { type: String },
+    exchangeName: { type: String },
+    signalId: { type: String },
+    payload: { type: "jsonb" },
+    when: { type: "bigint", transformer: epochTransformer },
+    createDate: { type: "timestamptz", createDate: true },
+    updatedDate: { type: "timestamptz", updateDate: true },
   },
-  { timestamps: { createdAt: "createDate", updatedAt: "updatedDate" }, minimize: false }
-);
-
-PartialSchema.index(
-  { symbol: 1, strategyName: 1, exchangeName: 1, signalId: 1 },
-  { unique: true }
-);
-
-const PartialModel = mongoose.model<PartialDocument>("partial-items", PartialSchema);
+  indices: [
+    {
+      name: "partial_items_uq",
+      columns: ["symbol", "strategyName", "exchangeName", "signalId"],
+      unique: true,
+    },
+  ],
+});
 
 export { PartialModel, IPartialDto, IPartialRow };

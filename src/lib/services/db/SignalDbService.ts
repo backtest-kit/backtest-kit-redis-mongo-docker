@@ -1,6 +1,5 @@
 import BaseCRUD from "../../common/BaseCRUD";
 import { ISignalRowDoc, SignalModel } from "../../../schema/Signal.schema";
-import { readTransform } from "../../../utils/readTransform";
 import { inject } from "../../core/di";
 import { TYPES } from "../../core/types";
 import { LoggerService } from "../base/LoggerService";
@@ -18,13 +17,15 @@ export class SignalDbService extends BaseCRUD(SignalModel) {
     payload: ISignalRow | null,
   ): Promise<void> => {
     this.loggerService.log("signalDbService upsert", { symbol, strategyName, exchangeName });
-    const filter = { symbol, strategyName, exchangeName };
-    const document = await SignalModel.findOneAndUpdate(
-      filter,
-      { $set: { payload } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-    const result = readTransform(document.toJSON()) as unknown as ISignalRowDoc;
+    const repo = await this.repo<ISignalRowDoc>();
+    const { raw } = await repo
+      .createQueryBuilder()
+      .insert()
+      .values({ symbol, strategyName, exchangeName, payload })
+      .orUpdate(["payload"], ["symbol", "strategyName", "exchangeName"])
+      .returning("*")
+      .execute();
+    const result = raw[0] as ISignalRowDoc;
     await this.signalCacheService.setSignalId(result);
   };
 
@@ -36,7 +37,7 @@ export class SignalDbService extends BaseCRUD(SignalModel) {
     this.loggerService.log("signalDbService findByContext", { symbol, strategyName, exchangeName });
     const cachedId = await this.signalCacheService.getSignalId(symbol, strategyName, exchangeName);
     if (cachedId) {
-      const cached = await super.findByFilter({ _id: cachedId }) as ISignalRowDoc | null;
+      const cached = await super.findByFilter({ id: cachedId }) as ISignalRowDoc | null;
       if (cached) {
         return cached;
       }

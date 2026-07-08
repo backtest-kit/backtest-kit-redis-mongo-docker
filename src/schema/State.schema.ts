@@ -1,5 +1,6 @@
-import mongoose, { Document, Schema } from "mongoose";
+import { EntitySchema } from "typeorm";
 import { StateData } from "backtest-kit";
+import { epochTransformer } from "../utils/epochTransformer";
 
 interface IStateDto {
   signalId: string;
@@ -8,26 +9,30 @@ interface IStateDto {
   when: number;
 }
 
-interface StateDocument extends IStateDto, Document {}
-
 interface IStateRow extends IStateDto {
   id: string;
   createDate: Date;
   updatedDate: Date;
 }
 
-const StateSchema: Schema<StateDocument> = new Schema(
-  {
-    signalId: { type: String, required: true, index: true },
-    bucketName: { type: String, required: true, index: true },
-    payload: { type: Schema.Types.Mixed, required: true },
-    when: { type: Number, required: true, index: true },
+const StateModel = new EntitySchema<IStateRow>({
+  name: "state-items",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    signalId: { type: String },
+    bucketName: { type: String },
+    payload: { type: "jsonb" },
+    when: { type: "bigint", transformer: epochTransformer },
+    createDate: { type: "timestamptz", createDate: true },
+    updatedDate: { type: "timestamptz", updateDate: true },
   },
-  { timestamps: { createdAt: "createDate", updatedAt: "updatedDate" }, minimize: false }
-);
-
-StateSchema.index({ signalId: 1, bucketName: 1 }, { unique: true });
-
-const StateModel = mongoose.model<StateDocument>("state-items", StateSchema);
+  indices: [
+    {
+      name: "state_items_uq",
+      columns: ["signalId", "bucketName"],
+      unique: true,
+    },
+  ],
+});
 
 export { StateModel, IStateDto, IStateRow };

@@ -5,4 +5,4 @@ export const CC_REDIS_PORT = parseInt(process.env.CC_REDIS_PORT) || 6379;
 export const CC_REDIS_USER = process.env.CC_REDIS_USER || "default";
 export const CC_REDIS_PASSWORD = process.env.CC_REDIS_PASSWORD || "mysecurepassword";
 
-export const CC_MONGO_CONNECTION_STRING = process.env.CC_MONGO_CONNECTION_STRING || "mongodb://localhost:27017/backtest-pro?wtimeoutMS=15000";
+export const CC_POSTGRES_CONNECTION_STRING = process.env.CC_POSTGRES_CONNECTION_STRING || "postgres://backtest:mysecurepassword@localhost:5432/backtest-pro";

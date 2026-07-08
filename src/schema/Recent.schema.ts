@@ -1,5 +1,6 @@
-import mongoose, { Document, Schema } from "mongoose";
+import { EntitySchema } from "typeorm";
 import { IPublicSignalRow } from "backtest-kit";
+import { epochTransformer } from "../utils/epochTransformer";
 
 interface IRecentDto {
   symbol: string;
@@ -11,32 +12,33 @@ interface IRecentDto {
   when: number;
 }
 
-interface RecentDocument extends IRecentDto, Document {}
-
 interface IRecentRow extends IRecentDto {
   id: string;
   createDate: Date;
   updatedDate: Date;
 }
 
-const RecentSchema: Schema<RecentDocument> = new Schema(
-  {
-    symbol: { type: String, required: true, index: true },
-    strategyName: { type: String, required: true, index: true },
-    exchangeName: { type: String, required: true, index: true },
-    frameName: { type: String, required: true, index: true },
-    backtest: { type: Boolean, required: true, index: true },
-    payload: { type: Schema.Types.Mixed, required: true },
-    when: { type: Number, required: true, index: true },
+const RecentModel = new EntitySchema<IRecentRow>({
+  name: "recent-items",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    symbol: { type: String },
+    strategyName: { type: String },
+    exchangeName: { type: String },
+    frameName: { type: String },
+    backtest: { type: "boolean" },
+    payload: { type: "jsonb" },
+    when: { type: "bigint", transformer: epochTransformer },
+    createDate: { type: "timestamptz", createDate: true },
+    updatedDate: { type: "timestamptz", updateDate: true },
   },
-  { timestamps: { createdAt: "createDate", updatedAt: "updatedDate" }, minimize: false }
-);
-
-RecentSchema.index(
-  { symbol: 1, strategyName: 1, exchangeName: 1, frameName: 1, backtest: 1 },
-  { unique: true }
-);
-
-const RecentModel = mongoose.model<RecentDocument>("recent-items", RecentSchema);
+  indices: [
+    {
+      name: "recent_items_uq",
+      columns: ["symbol", "strategyName", "exchangeName", "frameName", "backtest"],
+      unique: true,
+    },
+  ],
+});
 
 export { RecentModel, IRecentDto, IRecentRow };

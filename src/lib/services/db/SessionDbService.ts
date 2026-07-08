@@ -1,6 +1,5 @@
 import BaseCRUD from "../../common/BaseCRUD";
 import { ISessionRow, SessionModel } from "../../../schema/Session.schema";
-import { readTransform } from "../../../utils/readTransform";
 import { inject } from "../../core/di";
 import { TYPES } from "../../core/types";
 import { LoggerService } from "../base/LoggerService";
@@ -21,13 +20,15 @@ export class SessionDbService extends BaseCRUD(SessionModel) {
     when: Date,
   ): Promise<void> => {
     this.loggerService.log("sessionDbService upsert", { strategyName, exchangeName, frameName, symbol, backtest, when });
-    const filter = { strategyName, exchangeName, frameName, symbol, backtest };
-    const document = await SessionModel.findOneAndUpdate(
-      filter,
-      { $set: { payload, when: when.getTime() } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-    const result = readTransform(document.toJSON()) as unknown as ISessionRow;
+    const repo = await this.repo<ISessionRow>();
+    const { raw } = await repo
+      .createQueryBuilder()
+      .insert()
+      .values({ strategyName, exchangeName, frameName, symbol, backtest, payload, when: when.getTime() })
+      .orUpdate(["payload", "when"], ["strategyName", "exchangeName", "frameName", "symbol", "backtest"])
+      .returning("*")
+      .execute();
+    const result = raw[0] as ISessionRow;
     await this.sessionCacheService.setSessionId(result);
   };
 
@@ -41,7 +42,7 @@ export class SessionDbService extends BaseCRUD(SessionModel) {
     this.loggerService.log("sessionDbService findByContext", { strategyName, exchangeName, frameName, symbol, backtest });
     const cachedId = await this.sessionCacheService.getSessionId(strategyName, exchangeName, frameName, symbol, backtest);
     if (cachedId) {
-      const cached = await super.findByFilter({ _id: cachedId }) as ISessionRow | null;
+      const cached = await super.findByFilter({ id: cachedId }) as ISessionRow | null;
       if (cached) {
         return cached;
       }

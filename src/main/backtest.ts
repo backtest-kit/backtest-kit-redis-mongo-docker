@@ -18,7 +18,7 @@ const main = async () => {
   }
 
   {
-    await ioc.mongoService.waitForInit();
+    await ioc.postgresService.waitForInit();
     await ioc.redisService.waitForInit();
   }
 

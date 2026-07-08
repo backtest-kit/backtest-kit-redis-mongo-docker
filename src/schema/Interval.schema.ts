@@ -1,5 +1,6 @@
-import mongoose, { Document, Schema } from "mongoose";
+import { EntitySchema } from "typeorm";
 import { IntervalData } from "backtest-kit";
+import { epochTransformer } from "../utils/epochTransformer";
 
 interface IIntervalDto {
   bucket: string;
@@ -9,27 +10,31 @@ interface IIntervalDto {
   when: number;
 }
 
-interface IntervalDocument extends IIntervalDto, Document {}
-
 interface IIntervalRow extends IIntervalDto {
   id: string;
   createDate: Date;
   updatedDate: Date;
 }
 
-const IntervalSchema: Schema<IntervalDocument> = new Schema(
-  {
-    bucket: { type: String, required: true, index: true },
-    entryKey: { type: String, required: true, index: true },
-    payload: { type: Schema.Types.Mixed, required: true },
-    removed: { type: Boolean, required: true, default: false, index: true },
-    when: { type: Number, required: true, index: true },
+const IntervalModel = new EntitySchema<IIntervalRow>({
+  name: "interval-items",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    bucket: { type: String },
+    entryKey: { type: String },
+    payload: { type: "jsonb" },
+    removed: { type: "boolean", default: false },
+    when: { type: "bigint", transformer: epochTransformer },
+    createDate: { type: "timestamptz", createDate: true },
+    updatedDate: { type: "timestamptz", updateDate: true },
   },
-  { timestamps: { createdAt: "createDate", updatedAt: "updatedDate" }, minimize: false }
-);
-
-IntervalSchema.index({ bucket: 1, entryKey: 1 }, { unique: true });
-
-const IntervalModel = mongoose.model<IntervalDocument>("interval-items", IntervalSchema);
+  indices: [
+    {
+      name: "interval_items_uq",
+      columns: ["bucket", "entryKey"],
+      unique: true,
+    },
+  ],
+});
 
 export { IntervalModel, IIntervalDto, IIntervalRow };

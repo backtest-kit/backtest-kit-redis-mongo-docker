@@ -1,14 +1,12 @@
-import mongoose, { Document, Schema } from "mongoose";
+import { EntitySchema } from "typeorm";
 import { StrategyData } from "backtest-kit";
 
 interface IStrategyDto {
   symbol: string;
   strategyName: string;
   exchangeName: string;
-  payload: StrategyData;
+  payload: StrategyData | null;
 }
-
-interface StrategyDocument extends IStrategyDto, Document {}
 
 interface IStrategyRow extends IStrategyDto {
   id: string;
@@ -16,21 +14,24 @@ interface IStrategyRow extends IStrategyDto {
   updatedDate: Date;
 }
 
-const StrategySchema: Schema<StrategyDocument> = new Schema(
-  {
-    symbol: { type: String, required: true, index: true },
-    strategyName: { type: String, required: true, index: true },
-    exchangeName: { type: String, required: true, index: true },
-    payload: { type: Schema.Types.Mixed, required: true },
+const StrategyModel = new EntitySchema<IStrategyRow>({
+  name: "strategy-items",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    symbol: { type: String },
+    strategyName: { type: String },
+    exchangeName: { type: String },
+    payload: { type: "jsonb", nullable: true },
+    createDate: { type: "timestamptz", createDate: true },
+    updatedDate: { type: "timestamptz", updateDate: true },
   },
-  { timestamps: { createdAt: "createDate", updatedAt: "updatedDate" }, minimize: false }
-);
-
-StrategySchema.index(
-  { symbol: 1, strategyName: 1, exchangeName: 1 },
-  { unique: true }
-);
-
-const StrategyModel = mongoose.model<StrategyDocument>("strategy-items", StrategySchema);
+  indices: [
+    {
+      name: "strategy_items_uq",
+      columns: ["symbol", "strategyName", "exchangeName"],
+      unique: true,
+    },
+  ],
+});
 
 export { StrategyModel, IStrategyDto, IStrategyRow };

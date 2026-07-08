@@ -1,6 +1,6 @@
 const baseServices = {
     loggerService: Symbol('loggerService'),
-    mongoService: Symbol('mongoService'),
+    postgresService: Symbol('postgresService'),
     redisService: Symbol('redisService'),
 };
 

@@ -1,6 +1,5 @@
 import BaseCRUD from "../../common/BaseCRUD";
 import { ILogRow, LogModel } from "../../../schema/Log.schema";
-import { readTransform } from "../../../utils/readTransform";
 import { inject } from "../../core/di";
 import { TYPES } from "../../core/types";
 import { LoggerService } from "../base/LoggerService";
@@ -15,13 +14,15 @@ export class LogDbService extends BaseCRUD(LogModel) {
 
   public upsert = async (entryId: string, payload: ILogEntry): Promise<void> => {
     this.loggerService.log("logDbService upsert", { entryId });
-    const filter = { entryId };
-    const document = await LogModel.findOneAndUpdate(
-      filter,
-      { $set: { payload } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-    const result = readTransform(document.toJSON()) as unknown as ILogRow;
+    const repo = await this.repo<ILogRow>();
+    const { raw } = await repo
+      .createQueryBuilder()
+      .insert()
+      .values({ entryId, payload })
+      .orUpdate(["payload"], ["entryId"])
+      .returning("*")
+      .execute();
+    const result = raw[0] as ILogRow;
     await this.logCacheService.setLogId(result);
   };
 
@@ -29,7 +30,7 @@ export class LogDbService extends BaseCRUD(LogModel) {
     this.loggerService.log("logDbService findByEntryId", { entryId });
     const cachedId = await this.logCacheService.getLogId(entryId);
     if (cachedId) {
-      const cached = await super.findByFilter({ _id: cachedId }) as ILogRow | null;
+      const cached = await super.findByFilter({ id: cachedId }) as ILogRow | null;
       if (cached) {
         return cached;
       }
@@ -43,10 +44,7 @@ export class LogDbService extends BaseCRUD(LogModel) {
 
   public listAll = async (): Promise<ILogRow[]> => {
     this.loggerService.log("logDbService listAll");
-    const documents = await LogModel.find({})
-      .sort({ createDate: -1 })
-      .limit(LIST_LIMIT);
-    return documents.map((doc) => readTransform(doc.toJSON())) as unknown as ILogRow[];
+    return await super.findAll({}, LIST_LIMIT, { createDate: "DESC" }) as ILogRow[];
   };
 }
 

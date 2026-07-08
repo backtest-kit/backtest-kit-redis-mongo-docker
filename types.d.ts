@@ -1,7 +1,8 @@
 import * as functools_kit from 'functools-kit';
-import * as mongoose from 'mongoose';
+import * as typeorm from 'typeorm';
+import { DataSource } from 'typeorm';
 import { Redis } from 'ioredis';
-import { CandleInterval, ISignalRow, IScheduledSignalRow, RiskData, PartialData, BreakevenData, IStorageSignalRow, NotificationModel, ILogEntry, MeasureData, IntervalData, MemoryData, IPublicSignalRow, StateData, SessionData } from 'backtest-kit';
+import { CandleInterval, ISignalRow, IScheduledSignalRow, StrategyData, RiskData, PartialData, BreakevenData, IStorageSignalRow, NotificationModel, ILogEntry, MeasureData, IntervalData, MemoryData, IPublicSignalRow, StateData, SessionData } from 'backtest-kit';
 
 interface ILogger {
     log(topic: string, ...args: any[]): void;
@@ -18,9 +19,9 @@ declare class LoggerService implements ILogger {
     setLogger: (logger: ILogger) => void;
 }
 
-declare class MongooseService {
+declare class PostgresService {
     readonly loggerService: LoggerService;
-    waitForInit: (() => Promise<typeof mongoose>) & functools_kit.ISingleshotClearable<() => Promise<typeof mongoose>>;
+    waitForInit: (() => Promise<DataSource>) & functools_kit.ISingleshotClearable<() => Promise<DataSource>>;
     protected init: () => Promise<void>;
 }
 
@@ -92,7 +93,7 @@ interface ISignalDto {
     symbol: string;
     strategyName: string;
     exchangeName: string;
-    payload: ISignalRow;
+    payload: ISignalRow | null;
 }
 interface ISignalRowDoc extends ISignalDto {
     id: string;
@@ -145,7 +146,7 @@ interface IScheduleDto {
     symbol: string;
     strategyName: string;
     exchangeName: string;
-    payload: IScheduledSignalRow;
+    payload: IScheduledSignalRow | null;
 }
 interface IScheduleRow extends IScheduleDto {
     id: string;
@@ -192,6 +193,59 @@ declare class ScheduleCacheService extends ScheduleCacheService_base {
     hasScheduleId(symbol: string, strategyName: string, exchangeName: string): Promise<boolean>;
     getScheduleId(symbol: string, strategyName: string, exchangeName: string): Promise<string | null>;
     setScheduleId(row: IScheduleRow): Promise<string>;
+}
+
+interface IStrategyDto {
+    symbol: string;
+    strategyName: string;
+    exchangeName: string;
+    payload: StrategyData | null;
+}
+interface IStrategyRow extends IStrategyDto {
+    id: string;
+    createDate: Date;
+    updatedDate: Date;
+}
+
+declare const StrategyCacheService_base: (new () => {
+    readonly loggerService: LoggerService;
+    readonly connectionKey: string;
+    readonly ttlExpireSeconds: number;
+    _getItemKey(key: string): string;
+    set(key: string, value: unknown): Promise<void>;
+    get(key: string | null): Promise<unknown | null>;
+    delete(key: string): Promise<void>;
+    has(key: string): Promise<boolean>;
+    clear(): Promise<void>;
+    toArray(): Promise<[string, unknown][]>;
+    iterate(): AsyncIterableIterator<readonly [string, unknown]>;
+    keys(): AsyncIterableIterator<string>;
+    values(): AsyncIterableIterator<unknown>;
+    size(): Promise<number>;
+}) & Omit<{
+    new (connectionKey: string, ttlExpireSeconds?: number): {
+        readonly loggerService: LoggerService;
+        readonly connectionKey: string;
+        readonly ttlExpireSeconds: number;
+        _getItemKey(key: string): string;
+        set(key: string, value: unknown): Promise<void>;
+        get(key: string | null): Promise<unknown | null>;
+        delete(key: string): Promise<void>;
+        has(key: string): Promise<boolean>;
+        clear(): Promise<void>;
+        toArray(): Promise<[string, unknown][]>;
+        iterate(): AsyncIterableIterator<readonly [string, unknown]>;
+        keys(): AsyncIterableIterator<string>;
+        values(): AsyncIterableIterator<unknown>;
+        size(): Promise<number>;
+    };
+}, "prototype">;
+declare class StrategyCacheService extends StrategyCacheService_base {
+    readonly loggerService: LoggerService;
+    private _cacheKey;
+    hasStrategyId(symbol: string, strategyName: string, exchangeName: string): Promise<boolean>;
+    getStrategyId(symbol: string, strategyName: string, exchangeName: string): Promise<string | null>;
+    setStrategyId(row: IStrategyRow): Promise<string>;
 }
 
 interface IRiskDto {
@@ -787,6 +841,8 @@ interface ISessionDto {
     strategyName: string;
     exchangeName: string;
     frameName: string;
+    symbol: string;
+    backtest: boolean;
     payload: SessionData;
     when: number;
 }
@@ -832,44 +888,32 @@ declare const SessionCacheService_base: (new () => {
 declare class SessionCacheService extends SessionCacheService_base {
     readonly loggerService: LoggerService;
     private _cacheKey;
-    hasSessionId(strategyName: string, exchangeName: string, frameName: string): Promise<boolean>;
-    getSessionId(strategyName: string, exchangeName: string, frameName: string): Promise<string | null>;
+    hasSessionId(strategyName: string, exchangeName: string, frameName: string, symbol: string, backtest: boolean): Promise<boolean>;
+    getSessionId(strategyName: string, exchangeName: string, frameName: string, symbol: string, backtest: boolean): Promise<string | null>;
     setSessionId(row: ISessionRow): Promise<string>;
 }
 
 declare const CandleDbService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
+    readonly TargetModel: typeorm.EntitySchema<any>;
+    readonly entityName: string;
+    repo<T = any>(): Promise<typeorm.Repository<T>>;
     create(dto: object): Promise<any>;
     update(id: string, dto: object): Promise<any>;
     findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
+    findByFilter(filterData: object, order?: object): Promise<any>;
+    findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
 }) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
+    new (TargetModel: typeorm.EntitySchema<any>): {
         readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
+        readonly TargetModel: typeorm.EntitySchema<any>;
+        readonly entityName: string;
+        repo<T = any>(): Promise<typeorm.Repository<T>>;
         create(dto: object): Promise<any>;
         update(id: string, dto: object): Promise<any>;
         findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
+        findByFilter(filterData: object, order?: object): Promise<any>;
+        findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
     };
 }, "prototype">;
 declare class CandleDbService extends CandleDbService_base {
@@ -882,37 +926,25 @@ declare class CandleDbService extends CandleDbService_base {
 
 declare const SignalDbService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
+    readonly TargetModel: typeorm.EntitySchema<any>;
+    readonly entityName: string;
+    repo<T = any>(): Promise<typeorm.Repository<T>>;
     create(dto: object): Promise<any>;
     update(id: string, dto: object): Promise<any>;
     findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
+    findByFilter(filterData: object, order?: object): Promise<any>;
+    findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
 }) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
+    new (TargetModel: typeorm.EntitySchema<any>): {
         readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
+        readonly TargetModel: typeorm.EntitySchema<any>;
+        readonly entityName: string;
+        repo<T = any>(): Promise<typeorm.Repository<T>>;
         create(dto: object): Promise<any>;
         update(id: string, dto: object): Promise<any>;
         findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
+        findByFilter(filterData: object, order?: object): Promise<any>;
+        findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
     };
 }, "prototype">;
 declare class SignalDbService extends SignalDbService_base {
@@ -924,37 +956,25 @@ declare class SignalDbService extends SignalDbService_base {
 
 declare const ScheduleDbService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
+    readonly TargetModel: typeorm.EntitySchema<any>;
+    readonly entityName: string;
+    repo<T = any>(): Promise<typeorm.Repository<T>>;
     create(dto: object): Promise<any>;
     update(id: string, dto: object): Promise<any>;
     findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
+    findByFilter(filterData: object, order?: object): Promise<any>;
+    findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
 }) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
+    new (TargetModel: typeorm.EntitySchema<any>): {
         readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
+        readonly TargetModel: typeorm.EntitySchema<any>;
+        readonly entityName: string;
+        repo<T = any>(): Promise<typeorm.Repository<T>>;
         create(dto: object): Promise<any>;
         update(id: string, dto: object): Promise<any>;
         findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
+        findByFilter(filterData: object, order?: object): Promise<any>;
+        findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
     };
 }, "prototype">;
 declare class ScheduleDbService extends ScheduleDbService_base {
@@ -964,39 +984,57 @@ declare class ScheduleDbService extends ScheduleDbService_base {
     findByContext: (symbol: string, strategyName: string, exchangeName: string) => Promise<IScheduleRow | null>;
 }
 
-declare const RiskDbService_base: (new () => {
+declare const StrategyDbService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
+    readonly TargetModel: typeorm.EntitySchema<any>;
+    readonly entityName: string;
+    repo<T = any>(): Promise<typeorm.Repository<T>>;
     create(dto: object): Promise<any>;
     update(id: string, dto: object): Promise<any>;
     findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
+    findByFilter(filterData: object, order?: object): Promise<any>;
+    findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
 }) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
+    new (TargetModel: typeorm.EntitySchema<any>): {
         readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
+        readonly TargetModel: typeorm.EntitySchema<any>;
+        readonly entityName: string;
+        repo<T = any>(): Promise<typeorm.Repository<T>>;
         create(dto: object): Promise<any>;
         update(id: string, dto: object): Promise<any>;
         findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
+        findByFilter(filterData: object, order?: object): Promise<any>;
+        findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
+    };
+}, "prototype">;
+declare class StrategyDbService extends StrategyDbService_base {
+    readonly loggerService: LoggerService;
+    readonly strategyCacheService: StrategyCacheService;
+    upsert: (symbol: string, strategyName: string, exchangeName: string, payload: StrategyData | null) => Promise<void>;
+    findByContext: (symbol: string, strategyName: string, exchangeName: string) => Promise<IStrategyRow | null>;
+}
+
+declare const RiskDbService_base: (new () => {
+    readonly loggerService: LoggerService;
+    readonly TargetModel: typeorm.EntitySchema<any>;
+    readonly entityName: string;
+    repo<T = any>(): Promise<typeorm.Repository<T>>;
+    create(dto: object): Promise<any>;
+    update(id: string, dto: object): Promise<any>;
+    findById(id: string): Promise<any>;
+    findByFilter(filterData: object, order?: object): Promise<any>;
+    findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
+}) & Omit<{
+    new (TargetModel: typeorm.EntitySchema<any>): {
+        readonly loggerService: LoggerService;
+        readonly TargetModel: typeorm.EntitySchema<any>;
+        readonly entityName: string;
+        repo<T = any>(): Promise<typeorm.Repository<T>>;
+        create(dto: object): Promise<any>;
+        update(id: string, dto: object): Promise<any>;
+        findById(id: string): Promise<any>;
+        findByFilter(filterData: object, order?: object): Promise<any>;
+        findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
     };
 }, "prototype">;
 declare class RiskDbService extends RiskDbService_base {
@@ -1008,37 +1046,25 @@ declare class RiskDbService extends RiskDbService_base {
 
 declare const PartialDbService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
+    readonly TargetModel: typeorm.EntitySchema<any>;
+    readonly entityName: string;
+    repo<T = any>(): Promise<typeorm.Repository<T>>;
     create(dto: object): Promise<any>;
     update(id: string, dto: object): Promise<any>;
     findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
+    findByFilter(filterData: object, order?: object): Promise<any>;
+    findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
 }) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
+    new (TargetModel: typeorm.EntitySchema<any>): {
         readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
+        readonly TargetModel: typeorm.EntitySchema<any>;
+        readonly entityName: string;
+        repo<T = any>(): Promise<typeorm.Repository<T>>;
         create(dto: object): Promise<any>;
         update(id: string, dto: object): Promise<any>;
         findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
+        findByFilter(filterData: object, order?: object): Promise<any>;
+        findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
     };
 }, "prototype">;
 declare class PartialDbService extends PartialDbService_base {
@@ -1050,37 +1076,25 @@ declare class PartialDbService extends PartialDbService_base {
 
 declare const BreakevenDbService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
+    readonly TargetModel: typeorm.EntitySchema<any>;
+    readonly entityName: string;
+    repo<T = any>(): Promise<typeorm.Repository<T>>;
     create(dto: object): Promise<any>;
     update(id: string, dto: object): Promise<any>;
     findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
+    findByFilter(filterData: object, order?: object): Promise<any>;
+    findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
 }) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
+    new (TargetModel: typeorm.EntitySchema<any>): {
         readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
+        readonly TargetModel: typeorm.EntitySchema<any>;
+        readonly entityName: string;
+        repo<T = any>(): Promise<typeorm.Repository<T>>;
         create(dto: object): Promise<any>;
         update(id: string, dto: object): Promise<any>;
         findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
+        findByFilter(filterData: object, order?: object): Promise<any>;
+        findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
     };
 }, "prototype">;
 declare class BreakevenDbService extends BreakevenDbService_base {
@@ -1092,37 +1106,25 @@ declare class BreakevenDbService extends BreakevenDbService_base {
 
 declare const StorageDbService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
+    readonly TargetModel: typeorm.EntitySchema<any>;
+    readonly entityName: string;
+    repo<T = any>(): Promise<typeorm.Repository<T>>;
     create(dto: object): Promise<any>;
     update(id: string, dto: object): Promise<any>;
     findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
+    findByFilter(filterData: object, order?: object): Promise<any>;
+    findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
 }) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
+    new (TargetModel: typeorm.EntitySchema<any>): {
         readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
+        readonly TargetModel: typeorm.EntitySchema<any>;
+        readonly entityName: string;
+        repo<T = any>(): Promise<typeorm.Repository<T>>;
         create(dto: object): Promise<any>;
         update(id: string, dto: object): Promise<any>;
         findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
+        findByFilter(filterData: object, order?: object): Promise<any>;
+        findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
     };
 }, "prototype">;
 declare class StorageDbService extends StorageDbService_base {
@@ -1135,37 +1137,25 @@ declare class StorageDbService extends StorageDbService_base {
 
 declare const NotificationDbService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
+    readonly TargetModel: typeorm.EntitySchema<any>;
+    readonly entityName: string;
+    repo<T = any>(): Promise<typeorm.Repository<T>>;
     create(dto: object): Promise<any>;
     update(id: string, dto: object): Promise<any>;
     findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
+    findByFilter(filterData: object, order?: object): Promise<any>;
+    findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
 }) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
+    new (TargetModel: typeorm.EntitySchema<any>): {
         readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
+        readonly TargetModel: typeorm.EntitySchema<any>;
+        readonly entityName: string;
+        repo<T = any>(): Promise<typeorm.Repository<T>>;
         create(dto: object): Promise<any>;
         update(id: string, dto: object): Promise<any>;
         findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
+        findByFilter(filterData: object, order?: object): Promise<any>;
+        findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
     };
 }, "prototype">;
 declare class NotificationDbService extends NotificationDbService_base {
@@ -1178,37 +1168,25 @@ declare class NotificationDbService extends NotificationDbService_base {
 
 declare const LogDbService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
+    readonly TargetModel: typeorm.EntitySchema<any>;
+    readonly entityName: string;
+    repo<T = any>(): Promise<typeorm.Repository<T>>;
     create(dto: object): Promise<any>;
     update(id: string, dto: object): Promise<any>;
     findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
+    findByFilter(filterData: object, order?: object): Promise<any>;
+    findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
 }) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
+    new (TargetModel: typeorm.EntitySchema<any>): {
         readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
+        readonly TargetModel: typeorm.EntitySchema<any>;
+        readonly entityName: string;
+        repo<T = any>(): Promise<typeorm.Repository<T>>;
         create(dto: object): Promise<any>;
         update(id: string, dto: object): Promise<any>;
         findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
+        findByFilter(filterData: object, order?: object): Promise<any>;
+        findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
     };
 }, "prototype">;
 declare class LogDbService extends LogDbService_base {
@@ -1221,37 +1199,25 @@ declare class LogDbService extends LogDbService_base {
 
 declare const MeasureDbService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
+    readonly TargetModel: typeorm.EntitySchema<any>;
+    readonly entityName: string;
+    repo<T = any>(): Promise<typeorm.Repository<T>>;
     create(dto: object): Promise<any>;
     update(id: string, dto: object): Promise<any>;
     findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
+    findByFilter(filterData: object, order?: object): Promise<any>;
+    findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
 }) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
+    new (TargetModel: typeorm.EntitySchema<any>): {
         readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
+        readonly TargetModel: typeorm.EntitySchema<any>;
+        readonly entityName: string;
+        repo<T = any>(): Promise<typeorm.Repository<T>>;
         create(dto: object): Promise<any>;
         update(id: string, dto: object): Promise<any>;
         findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
+        findByFilter(filterData: object, order?: object): Promise<any>;
+        findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
     };
 }, "prototype">;
 declare class MeasureDbService extends MeasureDbService_base {
@@ -1265,37 +1231,25 @@ declare class MeasureDbService extends MeasureDbService_base {
 
 declare const IntervalDbService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
+    readonly TargetModel: typeorm.EntitySchema<any>;
+    readonly entityName: string;
+    repo<T = any>(): Promise<typeorm.Repository<T>>;
     create(dto: object): Promise<any>;
     update(id: string, dto: object): Promise<any>;
     findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
+    findByFilter(filterData: object, order?: object): Promise<any>;
+    findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
 }) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
+    new (TargetModel: typeorm.EntitySchema<any>): {
         readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
+        readonly TargetModel: typeorm.EntitySchema<any>;
+        readonly entityName: string;
+        repo<T = any>(): Promise<typeorm.Repository<T>>;
         create(dto: object): Promise<any>;
         update(id: string, dto: object): Promise<any>;
         findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
+        findByFilter(filterData: object, order?: object): Promise<any>;
+        findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
     };
 }, "prototype">;
 declare class IntervalDbService extends IntervalDbService_base {
@@ -1310,37 +1264,25 @@ declare class IntervalDbService extends IntervalDbService_base {
 
 declare const MemoryDbService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
+    readonly TargetModel: typeorm.EntitySchema<any>;
+    readonly entityName: string;
+    repo<T = any>(): Promise<typeorm.Repository<T>>;
     create(dto: object): Promise<any>;
     update(id: string, dto: object): Promise<any>;
     findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
+    findByFilter(filterData: object, order?: object): Promise<any>;
+    findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
 }) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
+    new (TargetModel: typeorm.EntitySchema<any>): {
         readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
+        readonly TargetModel: typeorm.EntitySchema<any>;
+        readonly entityName: string;
+        repo<T = any>(): Promise<typeorm.Repository<T>>;
         create(dto: object): Promise<any>;
         update(id: string, dto: object): Promise<any>;
         findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
+        findByFilter(filterData: object, order?: object): Promise<any>;
+        findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
     };
 }, "prototype">;
 declare class MemoryDbService extends MemoryDbService_base {
@@ -1355,37 +1297,25 @@ declare class MemoryDbService extends MemoryDbService_base {
 
 declare const RecentDbService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
+    readonly TargetModel: typeorm.EntitySchema<any>;
+    readonly entityName: string;
+    repo<T = any>(): Promise<typeorm.Repository<T>>;
     create(dto: object): Promise<any>;
     update(id: string, dto: object): Promise<any>;
     findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
+    findByFilter(filterData: object, order?: object): Promise<any>;
+    findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
 }) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
+    new (TargetModel: typeorm.EntitySchema<any>): {
         readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
+        readonly TargetModel: typeorm.EntitySchema<any>;
+        readonly entityName: string;
+        repo<T = any>(): Promise<typeorm.Repository<T>>;
         create(dto: object): Promise<any>;
         update(id: string, dto: object): Promise<any>;
         findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
+        findByFilter(filterData: object, order?: object): Promise<any>;
+        findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
     };
 }, "prototype">;
 declare class RecentDbService extends RecentDbService_base {
@@ -1397,37 +1327,25 @@ declare class RecentDbService extends RecentDbService_base {
 
 declare const StateDbService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
+    readonly TargetModel: typeorm.EntitySchema<any>;
+    readonly entityName: string;
+    repo<T = any>(): Promise<typeorm.Repository<T>>;
     create(dto: object): Promise<any>;
     update(id: string, dto: object): Promise<any>;
     findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
+    findByFilter(filterData: object, order?: object): Promise<any>;
+    findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
 }) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
+    new (TargetModel: typeorm.EntitySchema<any>): {
         readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
+        readonly TargetModel: typeorm.EntitySchema<any>;
+        readonly entityName: string;
+        repo<T = any>(): Promise<typeorm.Repository<T>>;
         create(dto: object): Promise<any>;
         update(id: string, dto: object): Promise<any>;
         findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
+        findByFilter(filterData: object, order?: object): Promise<any>;
+        findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
     };
 }, "prototype">;
 declare class StateDbService extends StateDbService_base {
@@ -1439,50 +1357,39 @@ declare class StateDbService extends StateDbService_base {
 
 declare const SessionDbService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
+    readonly TargetModel: typeorm.EntitySchema<any>;
+    readonly entityName: string;
+    repo<T = any>(): Promise<typeorm.Repository<T>>;
     create(dto: object): Promise<any>;
     update(id: string, dto: object): Promise<any>;
     findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
+    findByFilter(filterData: object, order?: object): Promise<any>;
+    findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
 }) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
+    new (TargetModel: typeorm.EntitySchema<any>): {
         readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
+        readonly TargetModel: typeorm.EntitySchema<any>;
+        readonly entityName: string;
+        repo<T = any>(): Promise<typeorm.Repository<T>>;
         create(dto: object): Promise<any>;
         update(id: string, dto: object): Promise<any>;
         findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
+        findByFilter(filterData: object, order?: object): Promise<any>;
+        findAll(filterData?: object, limit?: number, order?: object): Promise<any[]>;
     };
 }, "prototype">;
 declare class SessionDbService extends SessionDbService_base {
     readonly loggerService: LoggerService;
     readonly sessionCacheService: SessionCacheService;
-    upsert: (strategyName: string, exchangeName: string, frameName: string, payload: SessionData, when: Date) => Promise<void>;
-    findByContext: (strategyName: string, exchangeName: string, frameName: string) => Promise<ISessionRow | null>;
+    upsert: (strategyName: string, exchangeName: string, frameName: string, symbol: string, backtest: boolean, payload: SessionData, when: Date) => Promise<void>;
+    findByContext: (strategyName: string, exchangeName: string, frameName: string, symbol: string, backtest: boolean) => Promise<ISessionRow | null>;
 }
 
 declare const ioc: {
     candleDbService: CandleDbService;
     signalDbService: SignalDbService;
     scheduleDbService: ScheduleDbService;
+    strategyDbService: StrategyDbService;
     riskDbService: RiskDbService;
     partialDbService: PartialDbService;
     breakevenDbService: BreakevenDbService;
@@ -1498,6 +1405,7 @@ declare const ioc: {
     candleCacheService: CandleCacheService;
     signalCacheService: SignalCacheService;
     scheduleCacheService: ScheduleCacheService;
+    strategyCacheService: StrategyCacheService;
     riskCacheService: RiskCacheService;
     partialCacheService: PartialCacheService;
     breakevenCacheService: BreakevenCacheService;
@@ -1511,7 +1419,7 @@ declare const ioc: {
     stateCacheService: StateCacheService;
     sessionCacheService: SessionCacheService;
     loggerService: LoggerService;
-    mongoService: MongooseService;
+    postgresService: PostgresService;
     redisService: RedisService;
 };
 

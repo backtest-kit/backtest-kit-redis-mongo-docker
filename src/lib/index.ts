@@ -3,7 +3,7 @@ import { inject, init } from "./core/di";
 import TYPES from "./core/types";
 
 import LoggerService from "./services/base/LoggerService";
-import MongooseService from "./services/base/MongoService";
+import PostgresService from "./services/base/PostgresService";
 import RedisService from "./services/base/RedisService";
 
 import CandleCacheService from "./services/cache/CandleCacheService";
@@ -42,7 +42,7 @@ import SessionDbService from "./services/db/SessionDbService";
 
 const baseServices = {
   loggerService: inject<LoggerService>(TYPES.loggerService),
-  mongoService: inject<MongooseService>(TYPES.mongoService),
+  postgresService: inject<PostgresService>(TYPES.postgresService),
   redisService: inject<RedisService>(TYPES.redisService),
 };
 

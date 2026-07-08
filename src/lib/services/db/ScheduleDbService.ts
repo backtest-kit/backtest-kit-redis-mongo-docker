@@ -1,6 +1,5 @@
 import BaseCRUD from "../../common/BaseCRUD";
 import { IScheduleRow, ScheduleModel } from "../../../schema/Schedule.schema";
-import { readTransform } from "../../../utils/readTransform";
 import { inject } from "../../core/di";
 import { TYPES } from "../../core/types";
 import { LoggerService } from "../base/LoggerService";
@@ -18,13 +17,15 @@ export class ScheduleDbService extends BaseCRUD(ScheduleModel) {
     payload: IScheduledSignalRow | null,
   ): Promise<void> => {
     this.loggerService.log("scheduleDbService upsert", { symbol, strategyName, exchangeName });
-    const filter = { symbol, strategyName, exchangeName };
-    const document = await ScheduleModel.findOneAndUpdate(
-      filter,
-      { $set: { payload } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-    const result = readTransform(document.toJSON()) as unknown as IScheduleRow;
+    const repo = await this.repo<IScheduleRow>();
+    const { raw } = await repo
+      .createQueryBuilder()
+      .insert()
+      .values({ symbol, strategyName, exchangeName, payload })
+      .orUpdate(["payload"], ["symbol", "strategyName", "exchangeName"])
+      .returning("*")
+      .execute();
+    const result = raw[0] as IScheduleRow;
     await this.scheduleCacheService.setScheduleId(result);
   };
 
@@ -36,7 +37,7 @@ export class ScheduleDbService extends BaseCRUD(ScheduleModel) {
     this.loggerService.log("scheduleDbService findByContext", { symbol, strategyName, exchangeName });
     const cachedId = await this.scheduleCacheService.getScheduleId(symbol, strategyName, exchangeName);
     if (cachedId) {
-      const cached = await super.findByFilter({ _id: cachedId }) as IScheduleRow | null;
+      const cached = await super.findByFilter({ id: cachedId }) as IScheduleRow | null;
       if (cached) {
         return cached;
       }

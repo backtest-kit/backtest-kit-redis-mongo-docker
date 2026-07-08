@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from "mongoose";
+import { EntitySchema } from "typeorm";
 import { MeasureData } from "backtest-kit";
 
 interface IMeasureDto {
@@ -8,26 +8,30 @@ interface IMeasureDto {
   removed: boolean;
 }
 
-interface MeasureDocument extends IMeasureDto, Document {}
-
 interface IMeasureRow extends IMeasureDto {
   id: string;
   createDate: Date;
   updatedDate: Date;
 }
 
-const MeasureSchema: Schema<MeasureDocument> = new Schema(
-  {
-    bucket: { type: String, required: true, index: true },
-    entryKey: { type: String, required: true, index: true },
-    payload: { type: Schema.Types.Mixed, required: true },
-    removed: { type: Boolean, required: true, default: false, index: true },
+const MeasureModel = new EntitySchema<IMeasureRow>({
+  name: "measure-items",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    bucket: { type: String },
+    entryKey: { type: String },
+    payload: { type: "jsonb" },
+    removed: { type: "boolean", default: false },
+    createDate: { type: "timestamptz", createDate: true },
+    updatedDate: { type: "timestamptz", updateDate: true },
   },
-  { timestamps: { createdAt: "createDate", updatedAt: "updatedDate" }, minimize: false }
-);
-
-MeasureSchema.index({ bucket: 1, entryKey: 1 }, { unique: true });
-
-const MeasureModel = mongoose.model<MeasureDocument>("measure-items", MeasureSchema);
+  indices: [
+    {
+      name: "measure_items_uq",
+      columns: ["bucket", "entryKey"],
+      unique: true,
+    },
+  ],
+});
 
 export { MeasureModel, IMeasureDto, IMeasureRow };

@@ -1,6 +1,5 @@
 import BaseCRUD from "../../common/BaseCRUD";
 import { IStateRow, StateModel } from "../../../schema/State.schema";
-import { readTransform } from "../../../utils/readTransform";
 import { inject } from "../../core/di";
 import { TYPES } from "../../core/types";
 import { LoggerService } from "../base/LoggerService";
@@ -13,13 +12,15 @@ export class StateDbService extends BaseCRUD(StateModel) {
 
   public upsert = async (signalId: string, bucketName: string, payload: StateData, when: Date): Promise<void> => {
     this.loggerService.log("stateDbService upsert", { signalId, bucketName, when });
-    const filter = { signalId, bucketName };
-    const document = await StateModel.findOneAndUpdate(
-      filter,
-      { $set: { payload, when: when.getTime() } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-    const result = readTransform(document.toJSON()) as unknown as IStateRow;
+    const repo = await this.repo<IStateRow>();
+    const { raw } = await repo
+      .createQueryBuilder()
+      .insert()
+      .values({ signalId, bucketName, payload, when: when.getTime() })
+      .orUpdate(["payload", "when"], ["signalId", "bucketName"])
+      .returning("*")
+      .execute();
+    const result = raw[0] as IStateRow;
     await this.stateCacheService.setStateId(result);
   };
 
@@ -27,7 +28,7 @@ export class StateDbService extends BaseCRUD(StateModel) {
     this.loggerService.log("stateDbService findByContext", { signalId, bucketName });
     const cachedId = await this.stateCacheService.getStateId(signalId, bucketName);
     if (cachedId) {
-      const cached = await super.findByFilter({ _id: cachedId }) as IStateRow | null;
+      const cached = await super.findByFilter({ id: cachedId }) as IStateRow | null;
       if (cached) {
         return cached;
       }

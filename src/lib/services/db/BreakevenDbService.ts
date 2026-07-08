@@ -1,6 +1,5 @@
 import BaseCRUD from "../../common/BaseCRUD";
 import { IBreakevenRow, BreakevenModel } from "../../../schema/Breakeven.schema";
-import { readTransform } from "../../../utils/readTransform";
 import { inject } from "../../core/di";
 import { TYPES } from "../../core/types";
 import { LoggerService } from "../base/LoggerService";
@@ -20,13 +19,15 @@ export class BreakevenDbService extends BaseCRUD(BreakevenModel) {
     when: Date,
   ): Promise<void> => {
     this.loggerService.log("breakevenDbService upsert", { symbol, strategyName, exchangeName, signalId, when });
-    const filter = { symbol, strategyName, exchangeName, signalId };
-    const document = await BreakevenModel.findOneAndUpdate(
-      filter,
-      { $set: { payload, when: when.getTime() } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-    const result = readTransform(document.toJSON()) as unknown as IBreakevenRow;
+    const repo = await this.repo<IBreakevenRow>();
+    const { raw } = await repo
+      .createQueryBuilder()
+      .insert()
+      .values({ symbol, strategyName, exchangeName, signalId, payload, when: when.getTime() })
+      .orUpdate(["payload", "when"], ["symbol", "strategyName", "exchangeName", "signalId"])
+      .returning("*")
+      .execute();
+    const result = raw[0] as IBreakevenRow;
     await this.breakevenCacheService.setBreakevenId(result);
   };
 
@@ -39,7 +40,7 @@ export class BreakevenDbService extends BaseCRUD(BreakevenModel) {
     this.loggerService.log("breakevenDbService findByContext", { symbol, strategyName, exchangeName, signalId });
     const cachedId = await this.breakevenCacheService.getBreakevenId(symbol, strategyName, exchangeName, signalId);
     if (cachedId) {
-      const cached = await super.findByFilter({ _id: cachedId }) as IBreakevenRow | null;
+      const cached = await super.findByFilter({ id: cachedId }) as IBreakevenRow | null;
       if (cached) {
         return cached;
       }

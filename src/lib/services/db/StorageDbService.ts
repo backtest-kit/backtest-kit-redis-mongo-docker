@@ -1,6 +1,5 @@
 import BaseCRUD from "../../common/BaseCRUD";
 import { IStorageRow, StorageModel } from "../../../schema/Storage.schema";
-import { readTransform } from "../../../utils/readTransform";
 import { inject } from "../../core/di";
 import { TYPES } from "../../core/types";
 import { LoggerService } from "../base/LoggerService";
@@ -17,13 +16,15 @@ export class StorageDbService extends BaseCRUD(StorageModel) {
     payload: IStorageSignalRow,
   ): Promise<void> => {
     this.loggerService.log("storageDbService upsert", { backtest, signalId });
-    const filter = { backtest, signalId };
-    const document = await StorageModel.findOneAndUpdate(
-      filter,
-      { $set: { payload } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-    const result = readTransform(document.toJSON()) as unknown as IStorageRow;
+    const repo = await this.repo<IStorageRow>();
+    const { raw } = await repo
+      .createQueryBuilder()
+      .insert()
+      .values({ backtest, signalId, payload })
+      .orUpdate(["payload"], ["backtest", "signalId"])
+      .returning("*")
+      .execute();
+    const result = raw[0] as IStorageRow;
     await this.storageCacheService.setStorageId(result);
   };
 
@@ -34,7 +35,7 @@ export class StorageDbService extends BaseCRUD(StorageModel) {
     this.loggerService.log("storageDbService findBySignalId", { backtest, signalId });
     const cachedId = await this.storageCacheService.getStorageId(backtest, signalId);
     if (cachedId) {
-      const cached = await super.findByFilter({ _id: cachedId }) as IStorageRow | null;
+      const cached = await super.findByFilter({ id: cachedId }) as IStorageRow | null;
       if (cached) {
         return cached;
       }

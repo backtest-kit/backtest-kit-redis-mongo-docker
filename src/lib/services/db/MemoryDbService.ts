@@ -1,6 +1,5 @@
 import BaseCRUD from "../../common/BaseCRUD";
 import { IMemoryRow, MemoryModel } from "../../../schema/Memory.schema";
-import { readTransform } from "../../../utils/readTransform";
 import { inject } from "../../core/di";
 import { TYPES } from "../../core/types";
 import { LoggerService } from "../base/LoggerService";
@@ -19,13 +18,15 @@ export class MemoryDbService extends BaseCRUD(MemoryModel) {
     when: Date,
   ): Promise<void> => {
     this.loggerService.log("memoryDbService upsert", { signalId, bucketName, memoryId, when });
-    const filter = { signalId, bucketName, memoryId };
-    const document = await MemoryModel.findOneAndUpdate(
-      filter,
-      { $set: { payload, removed: payload.removed, when: when.getTime() } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-    const result = readTransform(document.toJSON()) as unknown as IMemoryRow;
+    const repo = await this.repo<IMemoryRow>();
+    const { raw } = await repo
+      .createQueryBuilder()
+      .insert()
+      .values({ signalId, bucketName, memoryId, payload, removed: Boolean(payload.removed), when: when.getTime() })
+      .orUpdate(["payload", "removed", "when"], ["signalId", "bucketName", "memoryId"])
+      .returning("*")
+      .execute();
+    const result = raw[0] as IMemoryRow;
     await this.memoryCacheService.setMemoryEntryId(result);
   };
 
@@ -37,7 +38,7 @@ export class MemoryDbService extends BaseCRUD(MemoryModel) {
     this.loggerService.log("memoryDbService findByMemoryId", { signalId, bucketName, memoryId });
     const cachedId = await this.memoryCacheService.getMemoryEntryId(signalId, bucketName, memoryId);
     if (cachedId) {
-      const cached = await super.findByFilter({ _id: cachedId }) as IMemoryRow | null;
+      const cached = await super.findByFilter({ id: cachedId }) as IMemoryRow | null;
       if (cached) {
         return cached;
       }
@@ -72,17 +73,15 @@ export class MemoryDbService extends BaseCRUD(MemoryModel) {
     memoryId: string,
   ): Promise<void> => {
     this.loggerService.log("memoryDbService softRemove", { signalId, bucketName, memoryId });
-    const filter = { signalId, bucketName, memoryId };
-    const document = await MemoryModel.findOneAndUpdate(
-      filter,
-      { $set: { removed: true, "payload.removed": true } },
-      { new: true },
-    );
-    if (!document) {
+    const repo = await this.repo<IMemoryRow>();
+    const existing = await repo.findOne({ where: { signalId, bucketName, memoryId } });
+    if (!existing) {
       return;
     }
-    const result = readTransform(document.toJSON()) as unknown as IMemoryRow;
-    await this.memoryCacheService.setMemoryEntryId(result);
+    existing.removed = true;
+    (existing.payload as MemoryData).removed = true;
+    const saved = await repo.save(existing);
+    await this.memoryCacheService.setMemoryEntryId(saved);
   };
 
   public listEntries = async (signalId: string, bucketName: string): Promise<IMemoryRow[]> => {

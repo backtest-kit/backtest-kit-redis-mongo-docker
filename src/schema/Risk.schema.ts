@@ -1,5 +1,6 @@
-import mongoose, { Document, Schema } from "mongoose";
+import { EntitySchema } from "typeorm";
 import { RiskData } from "backtest-kit";
+import { epochTransformer } from "../utils/epochTransformer";
 
 interface IRiskDto {
   riskName: string;
@@ -8,26 +9,30 @@ interface IRiskDto {
   when: number;
 }
 
-interface RiskDocument extends IRiskDto, Document {}
-
 interface IRiskRow extends IRiskDto {
   id: string;
   createDate: Date;
   updatedDate: Date;
 }
 
-const RiskSchema: Schema<RiskDocument> = new Schema(
-  {
-    riskName: { type: String, required: true, index: true },
-    exchangeName: { type: String, required: true, index: true },
-    positions: { type: Schema.Types.Mixed, required: true, default: [] },
-    when: { type: Number, required: true, index: true },
+const RiskModel = new EntitySchema<IRiskRow>({
+  name: "risk-items",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    riskName: { type: String },
+    exchangeName: { type: String },
+    positions: { type: "jsonb" },
+    when: { type: "bigint", transformer: epochTransformer },
+    createDate: { type: "timestamptz", createDate: true },
+    updatedDate: { type: "timestamptz", updateDate: true },
   },
-  { timestamps: { createdAt: "createDate", updatedAt: "updatedDate" }, minimize: false }
-);
-
-RiskSchema.index({ riskName: 1, exchangeName: 1 }, { unique: true });
-
-const RiskModel = mongoose.model<RiskDocument>("risk-items", RiskSchema);
+  indices: [
+    {
+      name: "risk_items_uq",
+      columns: ["riskName", "exchangeName"],
+      unique: true,
+    },
+  ],
+});
 
 export { RiskModel, IRiskDto, IRiskRow };

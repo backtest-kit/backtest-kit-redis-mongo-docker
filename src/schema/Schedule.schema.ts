@@ -1,14 +1,12 @@
-import mongoose, { Document, Schema } from "mongoose";
+import { EntitySchema } from "typeorm";
 import { IScheduledSignalRow } from "backtest-kit";
 
 interface IScheduleDto {
   symbol: string;
   strategyName: string;
   exchangeName: string;
-  payload: IScheduledSignalRow;
+  payload: IScheduledSignalRow | null;
 }
-
-interface ScheduleDocument extends IScheduleDto, Document {}
 
 interface IScheduleRow extends IScheduleDto {
   id: string;
@@ -16,21 +14,24 @@ interface IScheduleRow extends IScheduleDto {
   updatedDate: Date;
 }
 
-const ScheduleSchema: Schema<ScheduleDocument> = new Schema(
-  {
-    symbol: { type: String, required: true, index: true },
-    strategyName: { type: String, required: true, index: true },
-    exchangeName: { type: String, required: true, index: true },
-    payload: { type: Schema.Types.Mixed, required: true },
+const ScheduleModel = new EntitySchema<IScheduleRow>({
+  name: "schedule-items",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    symbol: { type: String },
+    strategyName: { type: String },
+    exchangeName: { type: String },
+    payload: { type: "jsonb", nullable: true },
+    createDate: { type: "timestamptz", createDate: true },
+    updatedDate: { type: "timestamptz", updateDate: true },
   },
-  { timestamps: { createdAt: "createDate", updatedAt: "updatedDate" }, minimize: false }
-);
-
-ScheduleSchema.index(
-  { symbol: 1, strategyName: 1, exchangeName: 1 },
-  { unique: true }
-);
-
-const ScheduleModel = mongoose.model<ScheduleDocument>("schedule-items", ScheduleSchema);
+  indices: [
+    {
+      name: "schedule_items_uq",
+      columns: ["symbol", "strategyName", "exchangeName"],
+      unique: true,
+    },
+  ],
+});
 
 export { ScheduleModel, IScheduleDto, IScheduleRow };

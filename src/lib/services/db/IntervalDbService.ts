@@ -1,6 +1,5 @@
 import BaseCRUD from "../../common/BaseCRUD";
 import { IIntervalRow, IntervalModel } from "../../../schema/Interval.schema";
-import { readTransform } from "../../../utils/readTransform";
 import { inject } from "../../core/di";
 import { TYPES } from "../../core/types";
 import { LoggerService } from "../base/LoggerService";
@@ -13,13 +12,15 @@ export class IntervalDbService extends BaseCRUD(IntervalModel) {
 
   public upsert = async (bucket: string, entryKey: string, payload: IntervalData, when: Date): Promise<void> => {
     this.loggerService.log("intervalDbService upsert", { bucket, entryKey, when });
-    const filter = { bucket, entryKey };
-    const document = await IntervalModel.findOneAndUpdate(
-      filter,
-      { $set: { payload, removed: payload.removed, when: when.getTime() } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-    const result = readTransform(document.toJSON()) as unknown as IIntervalRow;
+    const repo = await this.repo<IIntervalRow>();
+    const { raw } = await repo
+      .createQueryBuilder()
+      .insert()
+      .values({ bucket, entryKey, payload, removed: Boolean(payload.removed), when: when.getTime() })
+      .orUpdate(["payload", "removed", "when"], ["bucket", "entryKey"])
+      .returning("*")
+      .execute();
+    const result = raw[0] as IIntervalRow;
     await this.intervalCacheService.setIntervalId(result);
   };
 
@@ -27,7 +28,7 @@ export class IntervalDbService extends BaseCRUD(IntervalModel) {
     this.loggerService.log("intervalDbService findByKey", { bucket, entryKey });
     const cachedId = await this.intervalCacheService.getIntervalId(bucket, entryKey);
     if (cachedId) {
-      const cached = await super.findByFilter({ _id: cachedId }) as IIntervalRow | null;
+      const cached = await super.findByFilter({ id: cachedId }) as IIntervalRow | null;
       if (cached) {
         return cached;
       }
@@ -41,17 +42,15 @@ export class IntervalDbService extends BaseCRUD(IntervalModel) {
 
   public softRemove = async (bucket: string, entryKey: string): Promise<void> => {
     this.loggerService.log("intervalDbService softRemove", { bucket, entryKey });
-    const filter = { bucket, entryKey };
-    const document = await IntervalModel.findOneAndUpdate(
-      filter,
-      { $set: { removed: true, "payload.removed": true } },
-      { new: true },
-    );
-    if (!document) {
+    const repo = await this.repo<IIntervalRow>();
+    const existing = await repo.findOne({ where: { bucket, entryKey } });
+    if (!existing) {
       return;
     }
-    const result = readTransform(document.toJSON()) as unknown as IIntervalRow;
-    await this.intervalCacheService.setIntervalId(result);
+    existing.removed = true;
+    (existing.payload as IntervalData).removed = true;
+    const saved = await repo.save(existing);
+    await this.intervalCacheService.setIntervalId(saved);
   };
 
   public listKeys = async (bucket: string): Promise<string[]> => {
@@ -62,11 +61,12 @@ export class IntervalDbService extends BaseCRUD(IntervalModel) {
 
   public clearBucket = async (bucket: string): Promise<void> => {
     this.loggerService.log("intervalDbService clearBucket", { bucket });
+    const repo = await this.repo<IIntervalRow>();
     const rows = await super.findAll({ bucket }) as IIntervalRow[];
     for (const row of rows) {
       await this.intervalCacheService.deleteIntervalId(bucket, row.entryKey);
     }
-    await IntervalModel.deleteMany({ bucket });
+    await repo.delete({ bucket });
   };
 }
 

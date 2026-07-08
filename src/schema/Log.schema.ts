@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from "mongoose";
+import { EntitySchema } from "typeorm";
 import { ILogEntry } from "backtest-kit";
 
 interface ILogDto {
@@ -6,22 +6,28 @@ interface ILogDto {
   payload: ILogEntry;
 }
 
-interface LogDocument extends ILogDto, Document {}
-
 interface ILogRow extends ILogDto {
   id: string;
   createDate: Date;
   updatedDate: Date;
 }
 
-const LogSchema: Schema<LogDocument> = new Schema(
-  {
-    entryId: { type: String, required: true, unique: true, index: true },
-    payload: { type: Schema.Types.Mixed, required: true },
+const LogModel = new EntitySchema<ILogRow>({
+  name: "log-items",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    entryId: { type: String },
+    payload: { type: "jsonb" },
+    createDate: { type: "timestamptz", createDate: true },
+    updatedDate: { type: "timestamptz", updateDate: true },
   },
-  { timestamps: { createdAt: "createDate", updatedAt: "updatedDate" }, minimize: false }
-);
-
-const LogModel = mongoose.model<LogDocument>("log-items", LogSchema);
+  indices: [
+    {
+      name: "log_items_uq",
+      columns: ["entryId"],
+      unique: true,
+    },
+  ],
+});
 
 export { LogModel, ILogDto, ILogRow };

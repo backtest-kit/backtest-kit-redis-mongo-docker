@@ -1,5 +1,5 @@
 import LoggerService from "../services/base/LoggerService";
-import MongooseService from "../services/base/MongoService";
+import PostgresService from "../services/base/PostgresService";
 import RedisService from "../services/base/RedisService";
 
 import CandleCacheService from "../services/cache/CandleCacheService";
@@ -41,7 +41,7 @@ import TYPES from "./types";
 
 {
     provide(TYPES.loggerService, () => new LoggerService());
-    provide(TYPES.mongoService, () => new MongooseService());
+    provide(TYPES.postgresService, () => new PostgresService());
     provide(TYPES.redisService, () => new RedisService());
 }
 

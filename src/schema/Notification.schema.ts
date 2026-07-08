@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from "mongoose";
+import { EntitySchema } from "typeorm";
 import { NotificationModel as NotificationPayload } from "backtest-kit";
 
 interface INotificationDto {
@@ -7,25 +7,29 @@ interface INotificationDto {
   payload: NotificationPayload;
 }
 
-interface NotificationDocument extends INotificationDto, Document {}
-
 interface INotificationRow extends INotificationDto {
   id: string;
   createDate: Date;
   updatedDate: Date;
 }
 
-const NotificationSchema: Schema<NotificationDocument> = new Schema(
-  {
-    backtest: { type: Boolean, required: true, index: true },
-    notificationId: { type: String, required: true, index: true },
-    payload: { type: Schema.Types.Mixed, required: true },
+const NotificationModel = new EntitySchema<INotificationRow>({
+  name: "notification-items",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    backtest: { type: "boolean" },
+    notificationId: { type: String },
+    payload: { type: "jsonb" },
+    createDate: { type: "timestamptz", createDate: true },
+    updatedDate: { type: "timestamptz", updateDate: true },
   },
-  { timestamps: { createdAt: "createDate", updatedAt: "updatedDate" }, minimize: false }
-);
-
-NotificationSchema.index({ backtest: 1, notificationId: 1 }, { unique: true });
-
-const NotificationModel = mongoose.model<NotificationDocument>("notification-items", NotificationSchema);
+  indices: [
+    {
+      name: "notification_items_uq",
+      columns: ["backtest", "notificationId"],
+      unique: true,
+    },
+  ],
+});
 
 export { NotificationModel, INotificationDto, INotificationRow };

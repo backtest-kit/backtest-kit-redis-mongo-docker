@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from "mongoose";
+import { EntitySchema } from "typeorm";
 import { IStorageSignalRow } from "backtest-kit";
 
 interface IStorageDto {
@@ -7,25 +7,29 @@ interface IStorageDto {
   payload: IStorageSignalRow;
 }
 
-interface StorageDocument extends IStorageDto, Document {}
-
 interface IStorageRow extends IStorageDto {
   id: string;
   createDate: Date;
   updatedDate: Date;
 }
 
-const StorageSchema: Schema<StorageDocument> = new Schema(
-  {
-    backtest: { type: Boolean, required: true, index: true },
-    signalId: { type: String, required: true, index: true },
-    payload: { type: Schema.Types.Mixed, required: true },
+const StorageModel = new EntitySchema<IStorageRow>({
+  name: "storage-items",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    backtest: { type: "boolean" },
+    signalId: { type: String },
+    payload: { type: "jsonb" },
+    createDate: { type: "timestamptz", createDate: true },
+    updatedDate: { type: "timestamptz", updateDate: true },
   },
-  { timestamps: { createdAt: "createDate", updatedAt: "updatedDate" }, minimize: false }
-);
-
-StorageSchema.index({ backtest: 1, signalId: 1 }, { unique: true });
-
-const StorageModel = mongoose.model<StorageDocument>("storage-items", StorageSchema);
+  indices: [
+    {
+      name: "storage_items_uq",
+      columns: ["backtest", "signalId"],
+      unique: true,
+    },
+  ],
+});
 
 export { StorageModel, IStorageDto, IStorageRow };

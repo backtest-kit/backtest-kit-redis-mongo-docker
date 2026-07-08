@@ -1,14 +1,12 @@
-import mongoose, { Document, Schema } from "mongoose";
+import { EntitySchema } from "typeorm";
 import { ISignalRow } from "backtest-kit";
 
 interface ISignalDto {
   symbol: string;
   strategyName: string;
   exchangeName: string;
-  payload: ISignalRow;
+  payload: ISignalRow | null;
 }
-
-interface SignalDocument extends ISignalDto, Document {}
 
 interface ISignalRowDoc extends ISignalDto {
   id: string;
@@ -16,21 +14,24 @@ interface ISignalRowDoc extends ISignalDto {
   updatedDate: Date;
 }
 
-const SignalSchema: Schema<SignalDocument> = new Schema(
-  {
-    symbol: { type: String, required: true, index: true },
-    strategyName: { type: String, required: true, index: true },
-    exchangeName: { type: String, required: true, index: true },
-    payload: { type: Schema.Types.Mixed, required: true },
+const SignalModel = new EntitySchema<ISignalRowDoc>({
+  name: "signal-items",
+  columns: {
+    id: { type: "uuid", primary: true, generated: "uuid" },
+    symbol: { type: String },
+    strategyName: { type: String },
+    exchangeName: { type: String },
+    payload: { type: "jsonb", nullable: true },
+    createDate: { type: "timestamptz", createDate: true },
+    updatedDate: { type: "timestamptz", updateDate: true },
   },
-  { timestamps: { createdAt: "createDate", updatedAt: "updatedDate" }, minimize: false }
-);
-
-SignalSchema.index(
-  { symbol: 1, strategyName: 1, exchangeName: 1 },
-  { unique: true }
-);
-
-const SignalModel = mongoose.model<SignalDocument>("signal-items", SignalSchema);
+  indices: [
+    {
+      name: "signal_items_uq",
+      columns: ["symbol", "strategyName", "exchangeName"],
+      unique: true,
+    },
+  ],
+});
 
 export { SignalModel, ISignalDto, ISignalRowDoc };

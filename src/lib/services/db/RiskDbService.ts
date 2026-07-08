@@ -1,6 +1,5 @@
 import BaseCRUD from "../../common/BaseCRUD";
 import { IRiskRow, RiskModel } from "../../../schema/Risk.schema";
-import { readTransform } from "../../../utils/readTransform";
 import { inject } from "../../core/di";
 import { TYPES } from "../../core/types";
 import { LoggerService } from "../base/LoggerService";
@@ -18,13 +17,15 @@ export class RiskDbService extends BaseCRUD(RiskModel) {
     when: Date,
   ): Promise<void> => {
     this.loggerService.log("riskDbService upsert", { riskName, exchangeName, when });
-    const filter = { riskName, exchangeName };
-    const document = await RiskModel.findOneAndUpdate(
-      filter,
-      { $set: { positions, when: when.getTime() } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-    const result = readTransform(document.toJSON()) as unknown as IRiskRow;
+    const repo = await this.repo<IRiskRow>();
+    const { raw } = await repo
+      .createQueryBuilder()
+      .insert()
+      .values({ riskName, exchangeName, positions, when: when.getTime() })
+      .orUpdate(["positions", "when"], ["riskName", "exchangeName"])
+      .returning("*")
+      .execute();
+    const result = raw[0] as IRiskRow;
     await this.riskCacheService.setRiskId(result);
   };
 
@@ -35,7 +36,7 @@ export class RiskDbService extends BaseCRUD(RiskModel) {
     this.loggerService.log("riskDbService findByContext", { riskName, exchangeName });
     const cachedId = await this.riskCacheService.getRiskId(riskName, exchangeName);
     if (cachedId) {
-      const cached = await super.findByFilter({ _id: cachedId }) as IRiskRow | null;
+      const cached = await super.findByFilter({ id: cachedId }) as IRiskRow | null;
       if (cached) {
         return cached;
       }

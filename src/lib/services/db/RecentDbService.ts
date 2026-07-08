@@ -1,6 +1,5 @@
 import BaseCRUD from "../../common/BaseCRUD";
 import { IRecentRow, RecentModel } from "../../../schema/Recent.schema";
-import { readTransform } from "../../../utils/readTransform";
 import { inject } from "../../core/di";
 import { TYPES } from "../../core/types";
 import { LoggerService } from "../base/LoggerService";
@@ -21,13 +20,15 @@ export class RecentDbService extends BaseCRUD(RecentModel) {
     when: Date,
   ): Promise<void> => {
     this.loggerService.log("recentDbService upsert", { symbol, strategyName, exchangeName, frameName, backtest, when });
-    const filter = { symbol, strategyName, exchangeName, frameName, backtest };
-    const document = await RecentModel.findOneAndUpdate(
-      filter,
-      { $set: { payload, when: when.getTime() } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    );
-    const result = readTransform(document.toJSON()) as unknown as IRecentRow;
+    const repo = await this.repo<IRecentRow>();
+    const { raw } = await repo
+      .createQueryBuilder()
+      .insert()
+      .values({ symbol, strategyName, exchangeName, frameName, backtest, payload, when: when.getTime() })
+      .orUpdate(["payload", "when"], ["symbol", "strategyName", "exchangeName", "frameName", "backtest"])
+      .returning("*")
+      .execute();
+    const result = raw[0] as IRecentRow;
     await this.recentCacheService.setRecentId(result);
   };
 
@@ -41,7 +42,7 @@ export class RecentDbService extends BaseCRUD(RecentModel) {
     this.loggerService.log("recentDbService findByContext", { symbol, strategyName, exchangeName, frameName, backtest });
     const cachedId = await this.recentCacheService.getRecentId(symbol, strategyName, exchangeName, frameName, backtest);
     if (cachedId) {
-      const cached = await super.findByFilter({ _id: cachedId }) as IRecentRow | null;
+      const cached = await super.findByFilter({ id: cachedId }) as IRecentRow | null;
       if (cached) {
         return cached;
       }
