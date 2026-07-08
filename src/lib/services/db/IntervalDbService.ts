@@ -43,13 +43,24 @@ export class IntervalDbService extends BaseCRUD(IntervalModel) {
   public softRemove = async (bucket: string, entryKey: string): Promise<void> => {
     this.loggerService.log("intervalDbService softRemove", { bucket, entryKey });
     const repo = await this.repo<IIntervalRow>();
-    const existing = await repo.findOne({ where: { bucket, entryKey } });
-    if (!existing) {
+    // Atomic soft-remove: a single UPDATE computes the new value server-side.
+    // No read-modify-write, so there is no stale read from a replica and no
+    // lost update under concurrent upserts. The nested payload.removed flag is
+    // set in-place via jsonb_set. Early-return when the row does not exist.
+    const { raw } = await repo
+      .createQueryBuilder()
+      .update()
+      .set({
+        removed: true,
+        payload: () => `jsonb_set("payload", '{removed}', 'true')`,
+      })
+      .where({ bucket, entryKey })
+      .returning("*")
+      .execute();
+    const saved = raw[0] as IIntervalRow | undefined;
+    if (!saved) {
       return;
     }
-    existing.removed = true;
-    (existing.payload as IntervalData).removed = true;
-    const saved = await repo.save(existing);
     await this.intervalCacheService.setIntervalId(saved);
   };
 
