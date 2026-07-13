@@ -9,7 +9,7 @@ const GET_STORAGE_KEY_FN = (signalId: string, bucketName: string) => {
     return `${signalId}/${bucketName}`;
 }
 
-export class StateDataService extends BaseStorage("state-items") {
+export class StateDataService extends BaseStorage("backtest-kit/state-items") {
   readonly loggerService = inject<LoggerService>(TYPES.loggerService);
 
   public upsert = async (signalId: string, bucketName: string, payload: StateData, when: Date): Promise<void> => {

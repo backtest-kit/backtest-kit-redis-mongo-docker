@@ -9,7 +9,7 @@ const GET_STORAGE_KEY_FN = (symbol: string, strategyName: string, exchangeName: 
     return `${symbol}/${strategyName}/${exchangeName}`;
 }
 
-export class StrategyDataService extends BaseStorage("strategy-items") {
+export class StrategyDataService extends BaseStorage("backtest-kit/strategy-items") {
   readonly loggerService = inject<LoggerService>(TYPES.loggerService);
 
   public upsert = async (

@@ -9,7 +9,7 @@ const GET_STORAGE_KEY_FN = (strategyName: string, exchangeName: string, frameNam
     return `${strategyName}/${exchangeName}/${frameName}/${symbol}/${backtest}`;
 }
 
-export class SessionDataService extends BaseStorage("session-items") {
+export class SessionDataService extends BaseStorage("backtest-kit/session-items") {
   readonly loggerService = inject<LoggerService>(TYPES.loggerService);
 
   public upsert = async (

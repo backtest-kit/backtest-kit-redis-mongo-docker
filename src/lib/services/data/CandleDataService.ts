@@ -11,7 +11,7 @@ const GET_STORAGE_KEY_FN = (symbol: string, interval: CandleInterval, timestamp:
     return `${EXCHANGE_NAME}/${symbol}/${interval}/${timestamp}`;
 }
 
-export class CandleDataService extends BaseStorage("candle-items") {
+export class CandleDataService extends BaseStorage("backtest-kit/candle-items") {
   readonly loggerService = inject<LoggerService>(TYPES.loggerService);
 
   public create = async (dto: ICandleDto): Promise<ICandleRow> => {

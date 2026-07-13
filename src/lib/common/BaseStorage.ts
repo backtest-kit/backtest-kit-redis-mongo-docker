@@ -19,16 +19,30 @@ export const BaseStorage = factory(
     readonly loggerService = inject<LoggerService>(TYPES.loggerService);
     readonly minioService = inject<MinioService>(TYPES.minioService);
 
-    constructor(public readonly BUCKET_NAME: string) {}
+    /**
+     * Physical MinIO bucket: the first path segment of BUCKET_NAME.
+     * S3 bucket names cannot contain slashes, so "backtest-kit/candle-items"
+     * means bucket "backtest-kit" with root key prefix "candle-items/".
+     */
+    readonly bucketName: string;
+
+    /** Root key prefix inside the bucket ("" when BUCKET_NAME has no parent folder). */
+    readonly rootPrefix: string;
+
+    constructor(public readonly BUCKET_NAME: string) {
+      const [bucketName, ...folders] = BUCKET_NAME.split("/");
+      this.bucketName = bucketName;
+      this.rootPrefix = folders.length ? `${folders.join("/")}/` : "";
+    }
 
     async set(key: string, value: unknown): Promise<void> {
       if (!key) throw new Error("Key cannot be empty");
 
       this.loggerService.info(`BaseStorage set key=${key}`, { key, value });
-      const minioClient = await this.minioService.getClient(this.BUCKET_NAME);
+      const minioClient = await this.minioService.getClient(this.bucketName);
       const buffer = Buffer.from(JSON.stringify(value), "utf-8");
 
-      await minioClient.putObject(this.BUCKET_NAME, key, buffer, buffer.length, {
+      await minioClient.putObject(this.bucketName, this.rootPrefix + key, buffer, buffer.length, {
         "Content-Type": "application/json",
       });
     }
@@ -38,11 +52,11 @@ export const BaseStorage = factory(
       if (key === null) {
         return null;
       }
-      const minioClient = await this.minioService.getClient(this.BUCKET_NAME);
+      const minioClient = await this.minioService.getClient(this.bucketName);
 
       let dataStream: Readable;
       try {
-        dataStream = await minioClient.getObject(this.BUCKET_NAME, key);
+        dataStream = await minioClient.getObject(this.bucketName, this.rootPrefix + key);
       } catch (error) {
         if (isNotFound(error)) {
           return null;
@@ -73,9 +87,9 @@ export const BaseStorage = factory(
       if (key === null) {
         return false;
       }
-      const minioClient = await this.minioService.getClient(this.BUCKET_NAME);
+      const minioClient = await this.minioService.getClient(this.bucketName);
       try {
-        await minioClient.statObject(this.BUCKET_NAME, key);
+        await minioClient.statObject(this.bucketName, this.rootPrefix + key);
         return true;
       } catch (error) {
         if (isNotFound(error)) {
@@ -90,37 +104,37 @@ export const BaseStorage = factory(
       if (key === null) {
         return;
       }
-      const minioClient = await this.minioService.getClient(this.BUCKET_NAME);
-      await minioClient.removeObject(this.BUCKET_NAME, key);
+      const minioClient = await this.minioService.getClient(this.bucketName);
+      await minioClient.removeObject(this.bucketName, this.rootPrefix + key);
     }
 
     async clear(prefix = ""): Promise<void> {
       this.loggerService.info(`BaseStorage clear prefix=${prefix}`);
-      const minioClient = await this.minioService.getClient(this.BUCKET_NAME);
+      const minioClient = await this.minioService.getClient(this.bucketName);
       // Stream the listing and delete in batches: memory stays O(batch), not O(bucket)
       let batch: string[] = [];
       for await (const key of this.keys(prefix)) {
-        batch.push(key);
+        batch.push(this.rootPrefix + key);
         if (batch.length >= DELETE_BATCH_SIZE) {
-          await minioClient.removeObjects(this.BUCKET_NAME, batch);
+          await minioClient.removeObjects(this.bucketName, batch);
           batch = [];
         }
       }
       if (batch.length) {
-        await minioClient.removeObjects(this.BUCKET_NAME, batch);
+        await minioClient.removeObjects(this.bucketName, batch);
       }
     }
 
     async *keys(prefix = "", limit?: number): AsyncIterableIterator<string> {
       this.loggerService.info(`BaseStorage iterate keys prefix=${prefix} limit=${limit}`);
-      const minioClient = await this.minioService.getClient(this.BUCKET_NAME);
-      const objectStream = minioClient.listObjectsV2(this.BUCKET_NAME, prefix, true);
+      const minioClient = await this.minioService.getClient(this.bucketName);
+      const objectStream = minioClient.listObjectsV2(this.bucketName, this.rootPrefix + prefix, true);
       let count = 0;
       for await (const item of objectStream) {
         if (!item.name) {
           continue;
         }
-        yield item.name;
+        yield item.name.slice(this.rootPrefix.length);
         count += 1;
         if (limit !== undefined && count >= limit) {
           return;

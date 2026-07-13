@@ -23,7 +23,7 @@ const GET_STORAGE_KEY_FN = (backtest: boolean, notificationId: string, when: Dat
     return `${backtest}/${inverted}_${notificationId}`;
 }
 
-export class NotificationDataService extends BaseStorage("notification-items") {
+export class NotificationDataService extends BaseStorage("backtest-kit/notification-items") {
   readonly loggerService = inject<LoggerService>(TYPES.loggerService);
   readonly notificationConnectionService = inject<NotificationConnectionService>(TYPES.notificationConnectionService);
 

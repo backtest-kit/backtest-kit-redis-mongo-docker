@@ -9,7 +9,7 @@ const GET_STORAGE_KEY_FN = (riskName: string, exchangeName: string) => {
     return `${riskName}/${exchangeName}`;
 }
 
-export class RiskDataService extends BaseStorage("risk-items") {
+export class RiskDataService extends BaseStorage("backtest-kit/risk-items") {
   readonly loggerService = inject<LoggerService>(TYPES.loggerService);
 
   public upsert = async (

@@ -9,7 +9,7 @@ const GET_STORAGE_KEY_FN = (symbol: string, strategyName: string, exchangeName: 
     return `${symbol}/${strategyName}/${exchangeName}/${signalId}`;
 }
 
-export class PartialDataService extends BaseStorage("partial-items") {
+export class PartialDataService extends BaseStorage("backtest-kit/partial-items") {
   readonly loggerService = inject<LoggerService>(TYPES.loggerService);
 
   public upsert = async (

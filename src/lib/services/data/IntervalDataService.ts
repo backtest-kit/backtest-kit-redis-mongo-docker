@@ -9,7 +9,7 @@ const GET_STORAGE_KEY_FN = (bucket: string, entryKey: string) => {
     return `${bucket}/${entryKey}`;
 }
 
-export class IntervalDataService extends BaseStorage("interval-items") {
+export class IntervalDataService extends BaseStorage("backtest-kit/interval-items") {
   readonly loggerService = inject<LoggerService>(TYPES.loggerService);
 
   public upsert = async (bucket: string, entryKey: string, payload: IntervalData, when: Date): Promise<void> => {

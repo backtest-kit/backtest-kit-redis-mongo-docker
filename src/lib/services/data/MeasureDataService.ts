@@ -9,7 +9,7 @@ const GET_STORAGE_KEY_FN = (bucket: string, entryKey: string) => {
     return `${bucket}/${entryKey}`;
 }
 
-export class MeasureDataService extends BaseStorage("measure-items") {
+export class MeasureDataService extends BaseStorage("backtest-kit/measure-items") {
   readonly loggerService = inject<LoggerService>(TYPES.loggerService);
 
   public upsert = async (bucket: string, entryKey: string, payload: MeasureData): Promise<void> => {

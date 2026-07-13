@@ -23,7 +23,7 @@ const GET_STORAGE_KEY_FN = (entryId: string, when: Date) => {
     return `${inverted}_${entryId}`;
 }
 
-export class LogDataService extends BaseStorage("log-items") {
+export class LogDataService extends BaseStorage("backtest-kit/log-items") {
   readonly loggerService = inject<LoggerService>(TYPES.loggerService);
   readonly logConnectionService = inject<LogConnectionService>(TYPES.logConnectionService);
 

@@ -48,6 +48,8 @@ interface ICandleRow extends ICandleDto {
 declare const CandleDataService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly minioService: MinioService;
+    readonly bucketName: string;
+    readonly rootPrefix: string;
     readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
     get<T = unknown>(key: string | null): Promise<T | null>;
@@ -63,6 +65,8 @@ declare const CandleDataService_base: (new () => {
     new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
         readonly minioService: MinioService;
+        readonly bucketName: string;
+        readonly rootPrefix: string;
         readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
         get<T = unknown>(key: string | null): Promise<T | null>;
@@ -98,6 +102,8 @@ interface ISignalRowDoc extends ISignalDto {
 declare const SignalDataService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly minioService: MinioService;
+    readonly bucketName: string;
+    readonly rootPrefix: string;
     readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
     get<T = unknown>(key: string | null): Promise<T | null>;
@@ -113,6 +119,8 @@ declare const SignalDataService_base: (new () => {
     new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
         readonly minioService: MinioService;
+        readonly bucketName: string;
+        readonly rootPrefix: string;
         readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
         get<T = unknown>(key: string | null): Promise<T | null>;
@@ -147,6 +155,8 @@ interface IScheduleRow extends IScheduleDto {
 declare const ScheduleDataService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly minioService: MinioService;
+    readonly bucketName: string;
+    readonly rootPrefix: string;
     readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
     get<T = unknown>(key: string | null): Promise<T | null>;
@@ -162,6 +172,8 @@ declare const ScheduleDataService_base: (new () => {
     new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
         readonly minioService: MinioService;
+        readonly bucketName: string;
+        readonly rootPrefix: string;
         readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
         get<T = unknown>(key: string | null): Promise<T | null>;
@@ -196,6 +208,8 @@ interface IStrategyRow extends IStrategyDto {
 declare const StrategyDataService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly minioService: MinioService;
+    readonly bucketName: string;
+    readonly rootPrefix: string;
     readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
     get<T = unknown>(key: string | null): Promise<T | null>;
@@ -211,6 +225,8 @@ declare const StrategyDataService_base: (new () => {
     new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
         readonly minioService: MinioService;
+        readonly bucketName: string;
+        readonly rootPrefix: string;
         readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
         get<T = unknown>(key: string | null): Promise<T | null>;
@@ -245,6 +261,8 @@ interface IRiskRow extends IRiskDto {
 declare const RiskDataService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly minioService: MinioService;
+    readonly bucketName: string;
+    readonly rootPrefix: string;
     readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
     get<T = unknown>(key: string | null): Promise<T | null>;
@@ -260,6 +278,8 @@ declare const RiskDataService_base: (new () => {
     new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
         readonly minioService: MinioService;
+        readonly bucketName: string;
+        readonly rootPrefix: string;
         readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
         get<T = unknown>(key: string | null): Promise<T | null>;
@@ -296,6 +316,8 @@ interface IPartialRow extends IPartialDto {
 declare const PartialDataService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly minioService: MinioService;
+    readonly bucketName: string;
+    readonly rootPrefix: string;
     readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
     get<T = unknown>(key: string | null): Promise<T | null>;
@@ -311,6 +333,8 @@ declare const PartialDataService_base: (new () => {
     new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
         readonly minioService: MinioService;
+        readonly bucketName: string;
+        readonly rootPrefix: string;
         readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
         get<T = unknown>(key: string | null): Promise<T | null>;
@@ -347,6 +371,8 @@ interface IBreakevenRow extends IBreakevenDto {
 declare const BreakevenDataService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly minioService: MinioService;
+    readonly bucketName: string;
+    readonly rootPrefix: string;
     readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
     get<T = unknown>(key: string | null): Promise<T | null>;
@@ -362,6 +388,8 @@ declare const BreakevenDataService_base: (new () => {
     new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
         readonly minioService: MinioService;
+        readonly bucketName: string;
+        readonly rootPrefix: string;
         readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
         get<T = unknown>(key: string | null): Promise<T | null>;
@@ -434,6 +462,8 @@ declare class StorageConnectionService extends StorageConnectionService_base {
 declare const StorageDataService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly minioService: MinioService;
+    readonly bucketName: string;
+    readonly rootPrefix: string;
     readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
     get<T = unknown>(key: string | null): Promise<T | null>;
@@ -449,6 +479,8 @@ declare const StorageDataService_base: (new () => {
     new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
         readonly minioService: MinioService;
+        readonly bucketName: string;
+        readonly rootPrefix: string;
         readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
         get<T = unknown>(key: string | null): Promise<T | null>;
@@ -525,6 +557,8 @@ declare class NotificationConnectionService extends NotificationConnectionServic
 declare const NotificationDataService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly minioService: MinioService;
+    readonly bucketName: string;
+    readonly rootPrefix: string;
     readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
     get<T = unknown>(key: string | null): Promise<T | null>;
@@ -540,6 +574,8 @@ declare const NotificationDataService_base: (new () => {
     new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
         readonly minioService: MinioService;
+        readonly bucketName: string;
+        readonly rootPrefix: string;
         readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
         get<T = unknown>(key: string | null): Promise<T | null>;
@@ -615,6 +651,8 @@ declare class LogConnectionService extends LogConnectionService_base {
 declare const LogDataService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly minioService: MinioService;
+    readonly bucketName: string;
+    readonly rootPrefix: string;
     readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
     get<T = unknown>(key: string | null): Promise<T | null>;
@@ -630,6 +668,8 @@ declare const LogDataService_base: (new () => {
     new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
         readonly minioService: MinioService;
+        readonly bucketName: string;
+        readonly rootPrefix: string;
         readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
         get<T = unknown>(key: string | null): Promise<T | null>;
@@ -668,6 +708,8 @@ interface IMeasureRow extends IMeasureDto {
 declare const MeasureDataService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly minioService: MinioService;
+    readonly bucketName: string;
+    readonly rootPrefix: string;
     readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
     get<T = unknown>(key: string | null): Promise<T | null>;
@@ -683,6 +725,8 @@ declare const MeasureDataService_base: (new () => {
     new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
         readonly minioService: MinioService;
+        readonly bucketName: string;
+        readonly rootPrefix: string;
         readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
         get<T = unknown>(key: string | null): Promise<T | null>;
@@ -720,6 +764,8 @@ interface IIntervalRow extends IIntervalDto {
 declare const IntervalDataService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly minioService: MinioService;
+    readonly bucketName: string;
+    readonly rootPrefix: string;
     readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
     get<T = unknown>(key: string | null): Promise<T | null>;
@@ -735,6 +781,8 @@ declare const IntervalDataService_base: (new () => {
     new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
         readonly minioService: MinioService;
+        readonly bucketName: string;
+        readonly rootPrefix: string;
         readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
         get<T = unknown>(key: string | null): Promise<T | null>;
@@ -774,6 +822,8 @@ interface IMemoryRow extends IMemoryDto {
 declare const MemoryDataService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly minioService: MinioService;
+    readonly bucketName: string;
+    readonly rootPrefix: string;
     readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
     get<T = unknown>(key: string | null): Promise<T | null>;
@@ -789,6 +839,8 @@ declare const MemoryDataService_base: (new () => {
     new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
         readonly minioService: MinioService;
+        readonly bucketName: string;
+        readonly rootPrefix: string;
         readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
         get<T = unknown>(key: string | null): Promise<T | null>;
@@ -829,6 +881,8 @@ interface IRecentRow extends IRecentDto {
 declare const RecentDataService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly minioService: MinioService;
+    readonly bucketName: string;
+    readonly rootPrefix: string;
     readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
     get<T = unknown>(key: string | null): Promise<T | null>;
@@ -844,6 +898,8 @@ declare const RecentDataService_base: (new () => {
     new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
         readonly minioService: MinioService;
+        readonly bucketName: string;
+        readonly rootPrefix: string;
         readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
         get<T = unknown>(key: string | null): Promise<T | null>;
@@ -878,6 +934,8 @@ interface IStateRow extends IStateDto {
 declare const StateDataService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly minioService: MinioService;
+    readonly bucketName: string;
+    readonly rootPrefix: string;
     readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
     get<T = unknown>(key: string | null): Promise<T | null>;
@@ -893,6 +951,8 @@ declare const StateDataService_base: (new () => {
     new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
         readonly minioService: MinioService;
+        readonly bucketName: string;
+        readonly rootPrefix: string;
         readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
         get<T = unknown>(key: string | null): Promise<T | null>;
@@ -930,6 +990,8 @@ interface ISessionRow extends ISessionDto {
 declare const SessionDataService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly minioService: MinioService;
+    readonly bucketName: string;
+    readonly rootPrefix: string;
     readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
     get<T = unknown>(key: string | null): Promise<T | null>;
@@ -945,6 +1007,8 @@ declare const SessionDataService_base: (new () => {
     new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
         readonly minioService: MinioService;
+        readonly bucketName: string;
+        readonly rootPrefix: string;
         readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
         get<T = unknown>(key: string | null): Promise<T | null>;

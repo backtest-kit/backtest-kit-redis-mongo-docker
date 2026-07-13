@@ -17,7 +17,7 @@ const GET_STORAGE_KEY_FN = (backtest: boolean, signalId: string) => {
     return `${backtest}/${signalId}`;
 }
 
-export class StorageDataService extends BaseStorage("storage-items") {
+export class StorageDataService extends BaseStorage("backtest-kit/storage-items") {
   readonly loggerService = inject<LoggerService>(TYPES.loggerService);
   readonly storageConnectionService = inject<StorageConnectionService>(TYPES.storageConnectionService);
 

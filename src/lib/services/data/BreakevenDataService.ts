@@ -9,7 +9,7 @@ const GET_STORAGE_KEY_FN = (symbol: string, strategyName: string, exchangeName: 
     return `${symbol}/${strategyName}/${exchangeName}/${signalId}`;
 }
 
-export class BreakevenDataService extends BaseStorage("breakeven-items") {
+export class BreakevenDataService extends BaseStorage("backtest-kit/breakeven-items") {
   readonly loggerService = inject<LoggerService>(TYPES.loggerService);
 
   public upsert = async (

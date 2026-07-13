@@ -9,7 +9,7 @@ const GET_STORAGE_KEY_FN = (symbol: string, strategyName: string, exchangeName: 
     return `${symbol}/${strategyName}/${exchangeName}`;
 }
 
-export class SignalDataService extends BaseStorage("signal-items") {
+export class SignalDataService extends BaseStorage("backtest-kit/signal-items") {
   readonly loggerService = inject<LoggerService>(TYPES.loggerService);
 
   public upsert = async (
