@@ -1,8 +1,8 @@
 <img src="https://github.com/tripolskypetr/backtest-kit/raw/refs/heads/master/assets/consciousness.svg" height="45px" align="right">
 
-# 🧿 backtest-kit-redis-mongo-docker
+# 🧿 backtest-kit-minio-s3-docker
 
-> A production-grade integration of [backtest-kit](https://github.com/tripolskypetr/backtest-kit) that replaces the default file-based `./dump/` persistence with **MongoDB** as the source of truth and **Redis** as an O(1) lookup cache, packaged with `docker-compose` for one-command deploys.
+> An integration of [backtest-kit](https://github.com/tripolskypetr/backtest-kit) that replaces the default file-based `./dump/` persistence with **MinIO (S3) as the source of truth** and **Redis as a time-ordered index**, packaged with `docker-compose` for one-command deploys.
 
 ![screenshot](https://raw.githubusercontent.com/tripolskypetr/backtest-kit/HEAD/assets/screenshots/screenshot16.png)
 
@@ -11,7 +11,20 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue)]()
 [![Build](https://github.com/tripolskypetr/backtest-kit/actions/workflows/webpack.yml/badge.svg)](https://github.com/tripolskypetr/backtest-kit/actions/workflows/webpack.yml)
 
-This project ships **15 custom Persist adapters** that implement the full backtest-kit `IPersist*Instance` contract on top of MongoDB + Redis. Strategy code, runners, and the CLI entrypoint stay unchanged — only the persistence layer is swapped.
+This project ships **16 custom Persist adapters** that implement the full backtest-kit `IPersist*Instance` contract on top of MinIO + Redis. Strategy code, runners, and the CLI entrypoint stay unchanged — only the persistence layer is swapped.
+
+An exotic but deliberate middle ground between the built-in file adapter and a full database:
+
+| | Default file `./dump/` | **MinIO + Redis (this project)** | [`@backtest-kit/mongo`](backtest-kit/packages/mongo) / [`@backtest-kit/pg`](backtest-kit/packages/pg) |
+|---|---|---|---|
+| Infrastructure | none | 2 containers | database + Redis cache |
+| Source of truth | JSON files on local disk | JSON objects in S3 bucket | rows / documents |
+| Durability & ops | single host, manual backup | S3 semantics: versioning, replication, `mc mirror`, lifecycle | DB tooling: dumps, replicas |
+| Newest-first listings | directory scan | Redis minute-index, O(limit) | `ORDER BY … LIMIT`, O(log n) |
+| Point reads (candles) | `fs.readFile` | 1 GET ≈ 1–3 ms | b-tree lookup ≈ 0.1–1 ms |
+| Sweet spot | local runs, CI | fat JSON snapshots, cheap unbounded archive, S3-native infra | hundreds of millions of candles, ad-hoc SQL/aggregation |
+
+Pick this variant when you want S3-grade durability and zero schema management, but a full DBMS would be overkill. If your candle set grows into the hundreds of millions, take the `pg`/`mongo` package instead — b-trees win that workload.
 
 📚 **[API Reference](https://backtest-kit.github.io/documents/example_02_first_backtest.html)** | 🌟 **[Quick Start](https://github.com/tripolskypetr/backtest-kit/tree/master/example)** | **📰 [Article](https://backtest-kit.github.io/documents/article_07_ai_news_trading_signals.html)**
 
@@ -20,10 +33,10 @@ This project ships **15 custom Persist adapters** that implement the full backte
 
 ### Local run (host node, dockerized infrastructure)
 
-Start MongoDB and Redis in containers:
+Start MinIO and Redis in containers:
 
 ```bash
-docker-compose -f docker/mongodb/docker-compose.yaml up -d
+docker-compose -f docker/minio/docker-compose.yaml up -d
 docker-compose -f docker/redis/docker-compose.yaml up -d
 ```
 
@@ -62,7 +75,7 @@ npm run stop:docker
 ```
 
 
-## 🗂️ The 15 Persist Adapters
+## 🗂️ The 16 Persist Adapters
 
 Each adapter implements the corresponding `IPersist*Instance` interface from `backtest-kit` and is registered in [src/config/setup.ts](src/config/setup.ts). All adapters share the same skeleton:
 
@@ -71,165 +84,95 @@ PersistXAdapter.usePersistXAdapter(class implements IPersistXInstance {
   constructor(/* context fields from backtest-kit */) {}
   async waitForInit(initial: boolean) {
     if (!initial) return;
-    await waitForInfra();        // gate first-touch on Mongo + Redis ready
+    await waitForInfra();        // gate first-touch on Redis ready (MinIO client is lazy)
   }
-  async readXData(...) { return await ioc.xDbService.findByContext(...); }
-  async writeXData(..., when: Date) { await ioc.xDbService.upsert(..., when); }
+  async readXData(...) { return await ioc.xDataService.findByContext(...); }
+  async writeXData(..., when: Date) { await ioc.xDataService.upsert(..., when); }
 });
 ```
 
-| Adapter | Collection | Context key (= unique index) | Purpose |
+Everything lives in **one MinIO bucket `backtest-kit`** — each entity gets a root folder. The `BaseStorage("backtest-kit/<entity>-items")` name format is parsed as `bucket/parent-folder`: the first path segment is the physical bucket, the rest becomes a transparent key prefix ([src/lib/common/BaseStorage.ts](src/lib/common/BaseStorage.ts)). A name without a slash (`BaseStorage("breakeven-items")`) still means a dedicated bucket — fully backward compatible.
+
+| Adapter | Folder | Object key | Purpose |
 |---|---|---|---|
-| **Candle** | `candle-items` | `(symbol, interval, timestamp)` | OHLCV cache; immutable inserts |
-| **Signal** | `signal-items` | `(symbol, strategyName, exchangeName)` | Live signal state per context |
-| **Schedule** | `schedule-items` | `(symbol, strategyName, exchangeName)` | Pending scheduled signal |
-| **Risk** | `risk-items` | `(riskName, exchangeName)` | Active risk positions snapshot |
-| **Partial** | `partial-items` | `(symbol, strategyName, exchangeName, signalId)` | Partial profit/loss levels per signal |
-| **Breakeven** | `breakeven-items` | `(symbol, strategyName, exchangeName, signalId)` | Breakeven reached flag |
-| **Storage** | `storage-items` | `(backtest, signalId)` | Closed/opened signal log per mode |
-| **Notification** | `notification-items` | `(backtest, notificationId)` | Event notifications |
-| **Log** | `log-items` | `(entryId)` | Strategy log entries |
-| **Measure** | `measure-items` | `(bucket, entryKey)` | LLM/API response cache (soft-delete) |
-| **Interval** | `interval-items` | `(bucket, entryKey)` | Once-per-interval markers (soft-delete) |
-| **Memory** | `memory-items` | `(signalId, bucketName, memoryId)` | Per-signal memory store (soft-delete) |
-| **Recent** | `recent-items` | `(symbol, strategyName, exchangeName, frameName, backtest)` | Last public signal per context |
-| **State** | `state-items` | `(signalId, bucketName)` | Per-signal state buckets |
-| **Session** | `session-items` | `(strategyName, exchangeName, frameName)` | One session per running strategy |
+| **Candle** | `candle-items/` | `exchange/symbol/interval/timestamp` | OHLCV cache; immutable inserts |
+| **Signal** | `signal-items/` | `symbol/strategy/exchange` | Live signal state per context |
+| **Schedule** | `schedule-items/` | `symbol/strategy/exchange` | Pending scheduled signal |
+| **Strategy** | `strategy-items/` | `symbol/strategy/exchange` | Deferred commit queue snapshot |
+| **Risk** | `risk-items/` | `riskName/exchange` | Active risk positions snapshot |
+| **Partial** | `partial-items/` | `symbol/strategy/exchange/signalId` | Partial profit/loss levels per signal |
+| **Breakeven** | `breakeven-items/` | `symbol/strategy/exchange/signalId` | Breakeven reached flag |
+| **Storage** | `storage-items/` | `backtest/signalId` | Closed/opened signal log per mode † |
+| **Notification** | `notification-items/` | `backtest/⟲ts_notificationId` | Event notifications † |
+| **Log** | `log-items/` | `⟲ts_entryId` | Strategy log entries † |
+| **Measure** | `measure-items/` | `bucket/entryKey` | LLM/API response cache |
+| **Interval** | `interval-items/` | `bucket/entryKey` | Once-per-interval markers |
+| **Memory** | `memory-items/` | `signalId/bucket/memoryId` | Per-signal memory store |
+| **Recent** | `recent-items/` | `symbol/strategy/exchange/frame/backtest` | Last public signal per context |
+| **State** | `state-items/` | `signalId/bucket` | Per-signal state buckets |
+| **Session** | `session-items/` | `strategy/exchange/frame/symbol/backtest` | One session per running strategy |
+
+`⟲ts` = inverted timestamp (`MAX_SAFE_INTEGER − ms`, zero-padded): plain lexicographic S3 listing yields **newest first** with no sorting. † = entity also maintained in the Redis time index (see below).
 
 
-## ⚛️ Atomicity & Read-After-Write Guarantee
+## ⚛️ Write Durability Without a Database
 
-`backtest-kit` is **designed with a write durability contract**: after `writeXData(...)` returns, the very next `readXData(...)` must see the just-written value. The default file-based persist satisfies this trivially via `fs.writeFile` + `fs.readFile`. A naïve Mongo implementation — `findByContext → if existing update else create` — does **not** satisfy this contract under concurrent access: two parallel writers both hit "no existing", both attempt insert, second one crashes with `E11000 duplicate key`. The framework then re-fetches from the exchange, retries the write, loops forever, or silently corrupts state.
+`backtest-kit` has a **write durability contract**: after `writeXData(...)` returns, the very next `readXData(...)` must see the just-written value. S3 gives strong read-after-write consistency for single objects, so the contract holds with plain object semantics — no transactions needed:
 
-### How we solve it
-
-Every `upsert` in this project goes through a **single atomic round-trip** to MongoDB:
+1. **Deterministic keys.** Every record's object key is a pure function of its context (`symbol/strategy/exchange/…`), so an upsert is a single idempotent `PUT` — no read-before-write, no duplicate-key races.
+2. **Immutable entities never rewrite.** Candles use a `stat` + `PUT` insert-only pair; log entries and notifications skip the `PUT` entirely when the key already exists, backed by an in-process index of persisted keys (FIFO-capped) so re-sending the accumulated list costs zero network in steady state.
+3. **Write order: MinIO first, Redis second.** A crash between the two leaves an object readable by key but invisible to listings — never a phantom entry pointing at nothing.
+4. **`removed` means absent.** Soft-delete entities (Measure, Interval, Memory) physically delete the object instead of writing a tombstone. `listKeys` is then a pure prefix LIST — zero body reads — and reads of removed entries return `null` by construction.
 
 ```ts
-// from src/lib/services/db/SignalDbService.ts
-public upsert = async (symbol, strategyName, exchangeName, payload) => {
-  const filter = { symbol, strategyName, exchangeName };  // matches the unique index
-  const document = await SignalModel.findOneAndUpdate(
-    filter,
-    { $set: { payload } },
-    { upsert: true, new: true, setDefaultsOnInsert: true },
-  );
-  const result = readTransform(document.toJSON()) as ISignalRowDoc;
-  await this.signalCacheService.setSignalId(result);     // Redis: ctx-key → id
+// src/lib/services/data/CandleDataService.ts — insert-only, one stat + one PUT
+public create = async (dto: ICandleDto): Promise<ICandleRow> => {
+  const key = GET_STORAGE_KEY_FN(dto.symbol, dto.interval, dto.timestamp);
+  const row: ICandleRow = { id: key, ...dto, /* dates */ };
+  if (await this.has(key)) return row;   // candles are immutable — no body download
+  await this.set(key, row);
+  return row;
 };
 ```
 
-Key properties of this pattern:
 
-1. **Filter shape == unique index shape.** Every collection has a Mongoose unique compound index whose fields are exactly the context key fields. MongoDB rejects all but one concurrent insert at the storage engine level — no E11000 leaks to the application.
-2. **`$set` for mutable fields, never `$setOnInsert` for the payload.** Subsequent writes to the same context key are *updates*, not no-ops. The exception is `CandleDbService` where candles are immutable and use `$setOnInsert` to preserve the first-written values.
-3. **`new: true`** returns the just-mutated document. The id is fed to the Redis cache immediately, so the next `findByContext` is O(1).
-4. **`setDefaultsOnInsert: true`** ensures Mongoose schema defaults (`createDate`, `updatedDate`, `removed: false`) are applied on insert paths.
+## ⚡ Redis as a Time-Ordered Index
 
-For soft-delete operations (Measure, Interval, Memory), a parallel atomic pattern is used:
+S3 can list keys only in lexicographic order and cannot answer "what was created last" without walking the bucket. For the three entities that need newest-first listings (Log, Notification, Storage), a `*ConnectionService` ([src/lib/services/connection/](src/lib/services/connection/)) maintains a Redis index:
 
-```ts
-public softRemove = async (bucket, entryKey) => {
-  const document = await IntervalModel.findOneAndUpdate(
-    { bucket, entryKey },
-    { $set: { removed: true, "payload.removed": true } },
-    { new: true },
-  );
-  if (document) await this.intervalCacheService.setIntervalId(...);
-};
-```
+- **One Redis SET per minute**: `<entity>-connection:<aligned-minute>` → object names. `register()` is a single pipeline (`SADD` + `SETNX` of the floor marker). Timestamps are minute-aligned via `alignToInterval`, so re-registering within a minute deduplicates by construction.
+- **`listNewest(limit, prefix)` walks backwards from the current minute** — direct key lookups, no `SCAN` over the keyspace. Minutes are probed in pipelines of 1000; a cheap `SCARD` pass skips empty minutes without transferring a single member; hot minutes (a fast backtest replay packs many records into one wall-clock minute) are paged via `SSCAN` with early exit at `limit`.
+- **Cold-index fallback.** If Redis was flushed, listings fall back to the bucket LIST (inverted-timestamp keys are already newest-first) and warm the index back up.
 
-The document is never physically deleted — `listKeys` filters on `removed: false` to skip tombstones. This mirrors the soft-delete semantics of the default file-based `PersistMeasureInstance` / `PersistIntervalInstance` / `PersistMemoryInstance` ([Persist.ts:3304](backtest-kit/src/classes/Persist.ts#L3304)).
-
-## ⚡ Redis as O(1) ID Cache
-
-MongoDB queries on an indexed compound key are fast (O(log n) on the B-tree), but `backtest-kit` performs **thousands of read-by-context-key per second** during backtests. Redis turns that into O(1) lookups.
-
-### The pattern
-
-For each domain there is a `*CacheService` that extends `BaseMap` ([src/lib/common/BaseMap.ts](src/lib/common/BaseMap.ts)) — a thin wrapper around `ioredis` that gives a string-keyed map API (`get`, `set`, `delete`, `has`, `keys`, `values`, `toArray`, `iterate`, `size`) on top of Redis keys namespaced by a service prefix.
+Steady-state cost of `readLogData` at startup: 1 RTT for the floor + 1–2 pipeline RTTs + ≤200 point GETs for bodies — independent of how many objects the bucket holds.
 
 ```ts
-// src/lib/services/cache/SignalCacheService.ts
-const REDIS_KEY = "signal_cache";
-
-export class SignalCacheService extends BaseMap(REDIS_KEY, -1) {  // -1 = no TTL
-  private _cacheKey(symbol, strategyName, exchangeName) {
-    return `${exchangeName}:${strategyName}:${symbol}`;
-  }
-  public async getSignalId(symbol, strategyName, exchangeName) {
-    return <string>await super.get(this._cacheKey(...)) ?? null;
-  }
-  public async setSignalId(row) {
-    await super.set(this._cacheKey(row.symbol, row.strategyName, row.exchangeName), row.id);
-    return row.id;
-  }
+// src/lib/services/data/LogDataService.ts — read path
+const names = await this.logConnectionService.listNewest(LIST_LIMIT);
+if (names.length) {
+  for (const name of names) rows.push(await this.get<ILogRow>(name));
+} else {
+  for await (const value of this.values("", LIST_LIMIT)) { /* fallback + re-warm */ }
 }
 ```
 
-### Read path
-
-```ts
-public findByContext = async (symbol, strategyName, exchangeName) => {
-  try {
-    const cachedId = await this.signalCacheService.getSignalId(...);
-    if (cachedId) return await super.findById(cachedId);   // ← O(1) Redis + O(1) Mongo by _id
-  } catch { void 0; }
-  // Cache miss: fall back to Mongo by full filter, then backfill Redis.
-  const result = await super.findByFilter({ symbol, strategyName, exchangeName });
-  if (result) await this.signalCacheService.setSignalId(result);
-  return result;
-};
-```
-
-- **Cache hit (steady state):** one Redis `GET` + one Mongo `findById(_id)` — both O(1)
-- **Cache miss (cold start, eviction, Redis restart):** one Mongo `findOne` by indexed filter + one Redis `SET` to backfill
-- **After `upsert`:** the cache is updated synchronously in the same critical section, so the next `findByContext` always hits the cache
-
-## 🛡️ Look-Ahead Bias Protection (`when: Date`)
-
-`backtest-kit` 9.0+ added a `when: Date` argument to every adapter `write*` method (and to `read*` for adapters that affect signal logic: Risk, Partial, Breakeven). The argument carries the **logical simulation timestamp** at which the write happens.
-
-For adapters that touch signal-affecting state (Risk, Partial, Breakeven, Recent, State, Session, Memory, Interval), the corresponding Mongoose schema has an indexed `when: Number` column:
-
-```ts
-// src/schema/State.schema.ts
-const StateSchema = new Schema({
-  signalId: { type: String, required: true, index: true },
-  bucketName: { type: String, required: true, index: true },
-  payload: { type: Schema.Types.Mixed, required: true },
-  when: { type: Number, required: true, index: true },  // ms since epoch
-});
-```
-
-The DbService converts `Date → ms` and stores it via `$set` on every upsert:
-
-```ts
-public upsert = async (signalId, bucketName, payload, when) => {
-  const document = await StateModel.findOneAndUpdate(
-    { signalId, bucketName },
-    { $set: { payload, when: when.getTime() } },
-    { upsert: true, new: true, setDefaultsOnInsert: true },
-  );
-  // ...
-};
-```
-
-This lets backtest-kit's internal look-ahead-bias filter (which lives upstream of the adapter) verify that no `read` returns a value with `when > current_simulation_time`. **Measure** is intentionally exempt — it caches LLM responses where look-ahead bias is not applicable.
 
 ## 🐳 Docker Layout
 
 ```
 docker/
-  mongodb/docker-compose.yaml   # mongodb:8.0.4 on :27017, volume ./mongo_data
-  redis/docker-compose.yaml     # redis:7.4.1 on :6379, password=mysecurepassword
-docker-compose.yaml             # main: backtest-kit container, mounts project as /workspace
+  minio/docker-compose.yaml   # MinIO on :9000 (S3) / :9001 (console), volume ./minio_data
+  redis/docker-compose.yaml   # redis:7.4.1 on :6379, password=mysecurepassword
+docker-compose.yaml           # main: backtest-kit container, mounts project as /workspace
 ```
 
-The main `docker-compose.yaml` uses `extra_hosts: host.docker.internal:host-gateway` so the container reaches MongoDB and Redis on the host machine. Use `host.docker.internal` instead of `127.0.0.1` in your connection strings, or override via `.env` if your infrastructure runs elsewhere:
+The main `docker-compose.yaml` uses `extra_hosts: host.docker.internal:host-gateway` so the container reaches MinIO and Redis on the host machine. Use `host.docker.internal` instead of `127.0.0.1`, or override via `.env` if your infrastructure runs elsewhere:
 
 ```bash
-CC_MONGO_CONNECTION_STRING=mongodb://prod-mongo:27017/backtest-pro
+CC_MINIO_ENDPOINT=prod-minio
+CC_MINIO_PORT=9000
+CC_MINIO_ACCESSKEY=...
+CC_MINIO_SECRETKEY=...
 CC_REDIS_HOST=prod-redis
 CC_REDIS_PORT=6379
 CC_REDIS_USER=default
@@ -259,8 +202,7 @@ const main = async () => {
   const { values } = getArgs();
   if (!values.entry || !values.backtest) return;
 
-  await ioc.mongoService.waitForInit();
-  await ioc.redisService.waitForInit();
+  await ioc.redisService.waitForInit();   // MinIO client connects lazily per bucket
   await waitForReady(true);
 
   await warmCandles({ exchangeName: ExchangeName.CCXT, /* ... */ });

@@ -6,7 +6,7 @@ services:
     platform: linux/amd64
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    container_name: backtest-kit-redis-mongo-docker
+    container_name: backtest-kit-minio-s3-docker
     ports:
       - "60050:60050"
     restart: unless-stopped
