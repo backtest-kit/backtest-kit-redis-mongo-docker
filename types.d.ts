@@ -1,7 +1,7 @@
 import * as functools_kit from 'functools-kit';
-import * as mongoose from 'mongoose';
 import { Redis } from 'ioredis';
-import { CandleInterval, ISignalRow, IScheduledSignalRow, RiskData, PartialData, BreakevenData, IStorageSignalRow, NotificationModel, ILogEntry, MeasureData, IntervalData, MemoryData, IPublicSignalRow, StateData, SessionData } from 'backtest-kit';
+import * as minio from 'minio';
+import { CandleInterval, ISignalRow, IScheduledSignalRow, StrategyData, RiskData, PartialData, BreakevenData, IStorageSignalRow, NotificationModel, ILogEntry, MeasureData, IntervalData, MemoryData, IPublicSignalRow, StateData, SessionData } from 'backtest-kit';
 
 interface ILogger {
     log(topic: string, ...args: any[]): void;
@@ -18,16 +18,14 @@ declare class LoggerService implements ILogger {
     setLogger: (logger: ILogger) => void;
 }
 
-declare class MongooseService {
-    readonly loggerService: LoggerService;
-    waitForInit: (() => Promise<typeof mongoose>) & functools_kit.ISingleshotClearable<() => Promise<typeof mongoose>>;
-    protected init: () => Promise<void>;
-}
-
 declare class RedisService {
     readonly loggerService: LoggerService;
     waitForInit: (() => Promise<Redis>) & functools_kit.ISingleshotClearable<() => Promise<Redis>>;
     protected init: () => Promise<void>;
+}
+
+declare class MinioService {
+    getClient: ((bucketName: string) => Promise<minio.Client>) & functools_kit.IClearableMemoize<[bucketName: string]> & functools_kit.IControlMemoize<[bucketName: string], Promise<minio.Client>>;
 }
 
 interface ICandleDto {
@@ -47,45 +45,42 @@ interface ICandleRow extends ICandleDto {
     updatedDate: Date;
 }
 
-declare const CandleCacheService_base: (new () => {
+declare const CandleDataService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly connectionKey: string;
-    readonly ttlExpireSeconds: number;
-    _getItemKey(key: string): string;
+    readonly minioService: MinioService;
+    readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
-    get(key: string | null): Promise<unknown | null>;
-    delete(key: string): Promise<void>;
+    get<T = unknown>(key: string | null): Promise<T | null>;
     has(key: string): Promise<boolean>;
-    clear(): Promise<void>;
-    toArray(): Promise<[string, unknown][]>;
-    iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-    keys(): AsyncIterableIterator<string>;
-    values(): AsyncIterableIterator<unknown>;
-    size(): Promise<number>;
+    delete(key: string): Promise<void>;
+    clear(prefix?: string): Promise<void>;
+    keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+    values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+    iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+    toArray(prefix?: string): Promise<[string, unknown][]>;
+    size(prefix?: string): Promise<number>;
 }) & Omit<{
-    new (connectionKey: string, ttlExpireSeconds?: number): {
+    new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
-        readonly connectionKey: string;
-        readonly ttlExpireSeconds: number;
-        _getItemKey(key: string): string;
+        readonly minioService: MinioService;
+        readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
-        get(key: string | null): Promise<unknown | null>;
-        delete(key: string): Promise<void>;
+        get<T = unknown>(key: string | null): Promise<T | null>;
         has(key: string): Promise<boolean>;
-        clear(): Promise<void>;
-        toArray(): Promise<[string, unknown][]>;
-        iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-        keys(): AsyncIterableIterator<string>;
-        values(): AsyncIterableIterator<unknown>;
-        size(): Promise<number>;
+        delete(key: string): Promise<void>;
+        clear(prefix?: string): Promise<void>;
+        keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+        values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+        iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+        toArray(prefix?: string): Promise<[string, unknown][]>;
+        size(prefix?: string): Promise<number>;
     };
 }, "prototype">;
-declare class CandleCacheService extends CandleCacheService_base {
+declare class CandleDataService extends CandleDataService_base {
     readonly loggerService: LoggerService;
-    private _cacheKey;
-    hasCandleId(symbol: string, interval: CandleInterval, exchangeName: string, timestamp: number): Promise<boolean>;
-    getCandleId(symbol: string, interval: CandleInterval, exchangeName: string, timestamp: number): Promise<string | null>;
-    setCandleId(row: ICandleRow): Promise<string>;
+    create: (dto: ICandleDto) => Promise<ICandleRow>;
+    hasCandle: (symbol: string, interval: CandleInterval, timestamp: number) => Promise<boolean>;
+    findBySymbolIntervalTimestamp: (symbol: string, interval: CandleInterval, timestamp: number) => Promise<ICandleRow | null>;
 }
 
 interface ISignalDto {
@@ -100,45 +95,41 @@ interface ISignalRowDoc extends ISignalDto {
     updatedDate: Date;
 }
 
-declare const SignalCacheService_base: (new () => {
+declare const SignalDataService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly connectionKey: string;
-    readonly ttlExpireSeconds: number;
-    _getItemKey(key: string): string;
+    readonly minioService: MinioService;
+    readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
-    get(key: string | null): Promise<unknown | null>;
-    delete(key: string): Promise<void>;
+    get<T = unknown>(key: string | null): Promise<T | null>;
     has(key: string): Promise<boolean>;
-    clear(): Promise<void>;
-    toArray(): Promise<[string, unknown][]>;
-    iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-    keys(): AsyncIterableIterator<string>;
-    values(): AsyncIterableIterator<unknown>;
-    size(): Promise<number>;
+    delete(key: string): Promise<void>;
+    clear(prefix?: string): Promise<void>;
+    keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+    values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+    iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+    toArray(prefix?: string): Promise<[string, unknown][]>;
+    size(prefix?: string): Promise<number>;
 }) & Omit<{
-    new (connectionKey: string, ttlExpireSeconds?: number): {
+    new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
-        readonly connectionKey: string;
-        readonly ttlExpireSeconds: number;
-        _getItemKey(key: string): string;
+        readonly minioService: MinioService;
+        readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
-        get(key: string | null): Promise<unknown | null>;
-        delete(key: string): Promise<void>;
+        get<T = unknown>(key: string | null): Promise<T | null>;
         has(key: string): Promise<boolean>;
-        clear(): Promise<void>;
-        toArray(): Promise<[string, unknown][]>;
-        iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-        keys(): AsyncIterableIterator<string>;
-        values(): AsyncIterableIterator<unknown>;
-        size(): Promise<number>;
+        delete(key: string): Promise<void>;
+        clear(prefix?: string): Promise<void>;
+        keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+        values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+        iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+        toArray(prefix?: string): Promise<[string, unknown][]>;
+        size(prefix?: string): Promise<number>;
     };
 }, "prototype">;
-declare class SignalCacheService extends SignalCacheService_base {
+declare class SignalDataService extends SignalDataService_base {
     readonly loggerService: LoggerService;
-    private _cacheKey;
-    hasSignalId(symbol: string, strategyName: string, exchangeName: string): Promise<boolean>;
-    getSignalId(symbol: string, strategyName: string, exchangeName: string): Promise<string | null>;
-    setSignalId(row: ISignalRowDoc): Promise<string>;
+    upsert: (symbol: string, strategyName: string, exchangeName: string, payload: ISignalRow | null) => Promise<void>;
+    findByContext: (symbol: string, strategyName: string, exchangeName: string) => Promise<ISignalRowDoc | null>;
 }
 
 interface IScheduleDto {
@@ -153,45 +144,90 @@ interface IScheduleRow extends IScheduleDto {
     updatedDate: Date;
 }
 
-declare const ScheduleCacheService_base: (new () => {
+declare const ScheduleDataService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly connectionKey: string;
-    readonly ttlExpireSeconds: number;
-    _getItemKey(key: string): string;
+    readonly minioService: MinioService;
+    readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
-    get(key: string | null): Promise<unknown | null>;
-    delete(key: string): Promise<void>;
+    get<T = unknown>(key: string | null): Promise<T | null>;
     has(key: string): Promise<boolean>;
-    clear(): Promise<void>;
-    toArray(): Promise<[string, unknown][]>;
-    iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-    keys(): AsyncIterableIterator<string>;
-    values(): AsyncIterableIterator<unknown>;
-    size(): Promise<number>;
+    delete(key: string): Promise<void>;
+    clear(prefix?: string): Promise<void>;
+    keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+    values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+    iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+    toArray(prefix?: string): Promise<[string, unknown][]>;
+    size(prefix?: string): Promise<number>;
 }) & Omit<{
-    new (connectionKey: string, ttlExpireSeconds?: number): {
+    new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
-        readonly connectionKey: string;
-        readonly ttlExpireSeconds: number;
-        _getItemKey(key: string): string;
+        readonly minioService: MinioService;
+        readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
-        get(key: string | null): Promise<unknown | null>;
-        delete(key: string): Promise<void>;
+        get<T = unknown>(key: string | null): Promise<T | null>;
         has(key: string): Promise<boolean>;
-        clear(): Promise<void>;
-        toArray(): Promise<[string, unknown][]>;
-        iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-        keys(): AsyncIterableIterator<string>;
-        values(): AsyncIterableIterator<unknown>;
-        size(): Promise<number>;
+        delete(key: string): Promise<void>;
+        clear(prefix?: string): Promise<void>;
+        keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+        values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+        iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+        toArray(prefix?: string): Promise<[string, unknown][]>;
+        size(prefix?: string): Promise<number>;
     };
 }, "prototype">;
-declare class ScheduleCacheService extends ScheduleCacheService_base {
+declare class ScheduleDataService extends ScheduleDataService_base {
     readonly loggerService: LoggerService;
-    private _cacheKey;
-    hasScheduleId(symbol: string, strategyName: string, exchangeName: string): Promise<boolean>;
-    getScheduleId(symbol: string, strategyName: string, exchangeName: string): Promise<string | null>;
-    setScheduleId(row: IScheduleRow): Promise<string>;
+    upsert: (symbol: string, strategyName: string, exchangeName: string, payload: IScheduledSignalRow | null) => Promise<void>;
+    findByContext: (symbol: string, strategyName: string, exchangeName: string) => Promise<IScheduleRow | null>;
+}
+
+interface IStrategyDto {
+    symbol: string;
+    strategyName: string;
+    exchangeName: string;
+    payload: StrategyData;
+}
+interface IStrategyRow extends IStrategyDto {
+    id: string;
+    createDate: Date;
+    updatedDate: Date;
+}
+
+declare const StrategyDataService_base: (new () => {
+    readonly loggerService: LoggerService;
+    readonly minioService: MinioService;
+    readonly BUCKET_NAME: string;
+    set(key: string, value: unknown): Promise<void>;
+    get<T = unknown>(key: string | null): Promise<T | null>;
+    has(key: string): Promise<boolean>;
+    delete(key: string): Promise<void>;
+    clear(prefix?: string): Promise<void>;
+    keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+    values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+    iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+    toArray(prefix?: string): Promise<[string, unknown][]>;
+    size(prefix?: string): Promise<number>;
+}) & Omit<{
+    new (BUCKET_NAME: string): {
+        readonly loggerService: LoggerService;
+        readonly minioService: MinioService;
+        readonly BUCKET_NAME: string;
+        set(key: string, value: unknown): Promise<void>;
+        get<T = unknown>(key: string | null): Promise<T | null>;
+        has(key: string): Promise<boolean>;
+        delete(key: string): Promise<void>;
+        clear(prefix?: string): Promise<void>;
+        keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+        values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+        iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+        toArray(prefix?: string): Promise<[string, unknown][]>;
+        size(prefix?: string): Promise<number>;
+    };
+}, "prototype">;
+declare class StrategyDataService extends StrategyDataService_base {
+    readonly loggerService: LoggerService;
+    upsert: (symbol: string, strategyName: string, exchangeName: string, payload: StrategyData | null) => Promise<void>;
+    findByContext: (symbol: string, strategyName: string, exchangeName: string) => Promise<IStrategyRow | null>;
 }
 
 interface IRiskDto {
@@ -206,45 +242,41 @@ interface IRiskRow extends IRiskDto {
     updatedDate: Date;
 }
 
-declare const RiskCacheService_base: (new () => {
+declare const RiskDataService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly connectionKey: string;
-    readonly ttlExpireSeconds: number;
-    _getItemKey(key: string): string;
+    readonly minioService: MinioService;
+    readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
-    get(key: string | null): Promise<unknown | null>;
-    delete(key: string): Promise<void>;
+    get<T = unknown>(key: string | null): Promise<T | null>;
     has(key: string): Promise<boolean>;
-    clear(): Promise<void>;
-    toArray(): Promise<[string, unknown][]>;
-    iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-    keys(): AsyncIterableIterator<string>;
-    values(): AsyncIterableIterator<unknown>;
-    size(): Promise<number>;
+    delete(key: string): Promise<void>;
+    clear(prefix?: string): Promise<void>;
+    keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+    values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+    iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+    toArray(prefix?: string): Promise<[string, unknown][]>;
+    size(prefix?: string): Promise<number>;
 }) & Omit<{
-    new (connectionKey: string, ttlExpireSeconds?: number): {
+    new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
-        readonly connectionKey: string;
-        readonly ttlExpireSeconds: number;
-        _getItemKey(key: string): string;
+        readonly minioService: MinioService;
+        readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
-        get(key: string | null): Promise<unknown | null>;
-        delete(key: string): Promise<void>;
+        get<T = unknown>(key: string | null): Promise<T | null>;
         has(key: string): Promise<boolean>;
-        clear(): Promise<void>;
-        toArray(): Promise<[string, unknown][]>;
-        iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-        keys(): AsyncIterableIterator<string>;
-        values(): AsyncIterableIterator<unknown>;
-        size(): Promise<number>;
+        delete(key: string): Promise<void>;
+        clear(prefix?: string): Promise<void>;
+        keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+        values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+        iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+        toArray(prefix?: string): Promise<[string, unknown][]>;
+        size(prefix?: string): Promise<number>;
     };
 }, "prototype">;
-declare class RiskCacheService extends RiskCacheService_base {
+declare class RiskDataService extends RiskDataService_base {
     readonly loggerService: LoggerService;
-    private _cacheKey;
-    hasRiskId(riskName: string, exchangeName: string): Promise<boolean>;
-    getRiskId(riskName: string, exchangeName: string): Promise<string | null>;
-    setRiskId(row: IRiskRow): Promise<string>;
+    upsert: (riskName: string, exchangeName: string, positions: RiskData, when: Date) => Promise<void>;
+    findByContext: (riskName: string, exchangeName: string) => Promise<IRiskRow | null>;
 }
 
 interface IPartialDto {
@@ -261,45 +293,41 @@ interface IPartialRow extends IPartialDto {
     updatedDate: Date;
 }
 
-declare const PartialCacheService_base: (new () => {
+declare const PartialDataService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly connectionKey: string;
-    readonly ttlExpireSeconds: number;
-    _getItemKey(key: string): string;
+    readonly minioService: MinioService;
+    readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
-    get(key: string | null): Promise<unknown | null>;
-    delete(key: string): Promise<void>;
+    get<T = unknown>(key: string | null): Promise<T | null>;
     has(key: string): Promise<boolean>;
-    clear(): Promise<void>;
-    toArray(): Promise<[string, unknown][]>;
-    iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-    keys(): AsyncIterableIterator<string>;
-    values(): AsyncIterableIterator<unknown>;
-    size(): Promise<number>;
+    delete(key: string): Promise<void>;
+    clear(prefix?: string): Promise<void>;
+    keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+    values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+    iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+    toArray(prefix?: string): Promise<[string, unknown][]>;
+    size(prefix?: string): Promise<number>;
 }) & Omit<{
-    new (connectionKey: string, ttlExpireSeconds?: number): {
+    new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
-        readonly connectionKey: string;
-        readonly ttlExpireSeconds: number;
-        _getItemKey(key: string): string;
+        readonly minioService: MinioService;
+        readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
-        get(key: string | null): Promise<unknown | null>;
-        delete(key: string): Promise<void>;
+        get<T = unknown>(key: string | null): Promise<T | null>;
         has(key: string): Promise<boolean>;
-        clear(): Promise<void>;
-        toArray(): Promise<[string, unknown][]>;
-        iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-        keys(): AsyncIterableIterator<string>;
-        values(): AsyncIterableIterator<unknown>;
-        size(): Promise<number>;
+        delete(key: string): Promise<void>;
+        clear(prefix?: string): Promise<void>;
+        keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+        values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+        iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+        toArray(prefix?: string): Promise<[string, unknown][]>;
+        size(prefix?: string): Promise<number>;
     };
 }, "prototype">;
-declare class PartialCacheService extends PartialCacheService_base {
+declare class PartialDataService extends PartialDataService_base {
     readonly loggerService: LoggerService;
-    private _cacheKey;
-    hasPartialId(symbol: string, strategyName: string, exchangeName: string, signalId: string): Promise<boolean>;
-    getPartialId(symbol: string, strategyName: string, exchangeName: string, signalId: string): Promise<string | null>;
-    setPartialId(row: IPartialRow): Promise<string>;
+    upsert: (symbol: string, strategyName: string, exchangeName: string, signalId: string, payload: PartialData, when: Date) => Promise<void>;
+    findByContext: (symbol: string, strategyName: string, exchangeName: string, signalId: string) => Promise<IPartialRow | null>;
 }
 
 interface IBreakevenDto {
@@ -316,45 +344,41 @@ interface IBreakevenRow extends IBreakevenDto {
     updatedDate: Date;
 }
 
-declare const BreakevenCacheService_base: (new () => {
+declare const BreakevenDataService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly connectionKey: string;
-    readonly ttlExpireSeconds: number;
-    _getItemKey(key: string): string;
+    readonly minioService: MinioService;
+    readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
-    get(key: string | null): Promise<unknown | null>;
-    delete(key: string): Promise<void>;
+    get<T = unknown>(key: string | null): Promise<T | null>;
     has(key: string): Promise<boolean>;
-    clear(): Promise<void>;
-    toArray(): Promise<[string, unknown][]>;
-    iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-    keys(): AsyncIterableIterator<string>;
-    values(): AsyncIterableIterator<unknown>;
-    size(): Promise<number>;
+    delete(key: string): Promise<void>;
+    clear(prefix?: string): Promise<void>;
+    keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+    values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+    iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+    toArray(prefix?: string): Promise<[string, unknown][]>;
+    size(prefix?: string): Promise<number>;
 }) & Omit<{
-    new (connectionKey: string, ttlExpireSeconds?: number): {
+    new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
-        readonly connectionKey: string;
-        readonly ttlExpireSeconds: number;
-        _getItemKey(key: string): string;
+        readonly minioService: MinioService;
+        readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
-        get(key: string | null): Promise<unknown | null>;
-        delete(key: string): Promise<void>;
+        get<T = unknown>(key: string | null): Promise<T | null>;
         has(key: string): Promise<boolean>;
-        clear(): Promise<void>;
-        toArray(): Promise<[string, unknown][]>;
-        iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-        keys(): AsyncIterableIterator<string>;
-        values(): AsyncIterableIterator<unknown>;
-        size(): Promise<number>;
+        delete(key: string): Promise<void>;
+        clear(prefix?: string): Promise<void>;
+        keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+        values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+        iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+        toArray(prefix?: string): Promise<[string, unknown][]>;
+        size(prefix?: string): Promise<number>;
     };
 }, "prototype">;
-declare class BreakevenCacheService extends BreakevenCacheService_base {
+declare class BreakevenDataService extends BreakevenDataService_base {
     readonly loggerService: LoggerService;
-    private _cacheKey;
-    hasBreakevenId(symbol: string, strategyName: string, exchangeName: string, signalId: string): Promise<boolean>;
-    getBreakevenId(symbol: string, strategyName: string, exchangeName: string, signalId: string): Promise<string | null>;
-    setBreakevenId(row: IBreakevenRow): Promise<string>;
+    upsert: (symbol: string, strategyName: string, exchangeName: string, signalId: string, payload: BreakevenData, when: Date) => Promise<void>;
+    findByContext: (symbol: string, strategyName: string, exchangeName: string, signalId: string) => Promise<IBreakevenRow | null>;
 }
 
 interface IStorageDto {
@@ -368,7 +392,7 @@ interface IStorageRow extends IStorageDto {
     updatedDate: Date;
 }
 
-declare const StorageCacheService_base: (new () => {
+declare const StorageConnectionService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly connectionKey: string;
     readonly ttlExpireSeconds: number;
@@ -401,12 +425,51 @@ declare const StorageCacheService_base: (new () => {
         size(): Promise<number>;
     };
 }, "prototype">;
-declare class StorageCacheService extends StorageCacheService_base {
+declare class StorageConnectionService extends StorageConnectionService_base {
     readonly loggerService: LoggerService;
-    private _cacheKey;
-    hasStorageId(backtest: boolean, signalId: string): Promise<boolean>;
-    getStorageId(backtest: boolean, signalId: string): Promise<string | null>;
-    setStorageId(row: IStorageRow): Promise<string>;
+    register: (objectName: string) => Promise<void>;
+    listNewest: (limit: number, prefix?: string) => Promise<string[]>;
+}
+
+declare const StorageDataService_base: (new () => {
+    readonly loggerService: LoggerService;
+    readonly minioService: MinioService;
+    readonly BUCKET_NAME: string;
+    set(key: string, value: unknown): Promise<void>;
+    get<T = unknown>(key: string | null): Promise<T | null>;
+    has(key: string): Promise<boolean>;
+    delete(key: string): Promise<void>;
+    clear(prefix?: string): Promise<void>;
+    keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+    values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+    iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+    toArray(prefix?: string): Promise<[string, unknown][]>;
+    size(prefix?: string): Promise<number>;
+}) & Omit<{
+    new (BUCKET_NAME: string): {
+        readonly loggerService: LoggerService;
+        readonly minioService: MinioService;
+        readonly BUCKET_NAME: string;
+        set(key: string, value: unknown): Promise<void>;
+        get<T = unknown>(key: string | null): Promise<T | null>;
+        has(key: string): Promise<boolean>;
+        delete(key: string): Promise<void>;
+        clear(prefix?: string): Promise<void>;
+        keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+        values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+        iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+        toArray(prefix?: string): Promise<[string, unknown][]>;
+        size(prefix?: string): Promise<number>;
+    };
+}, "prototype">;
+declare class StorageDataService extends StorageDataService_base {
+    readonly loggerService: LoggerService;
+    readonly storageConnectionService: StorageConnectionService;
+    private _registeredKeys;
+    private _rememberKey;
+    upsert: (backtest: boolean, signalId: string, payload: IStorageSignalRow) => Promise<void>;
+    findBySignalId: (backtest: boolean, signalId: string) => Promise<IStorageRow | null>;
+    listByMode: (backtest: boolean) => Promise<IStorageRow[]>;
 }
 
 interface INotificationDto {
@@ -420,7 +483,7 @@ interface INotificationRow extends INotificationDto {
     updatedDate: Date;
 }
 
-declare const NotificationCacheService_base: (new () => {
+declare const NotificationConnectionService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly connectionKey: string;
     readonly ttlExpireSeconds: number;
@@ -453,12 +516,51 @@ declare const NotificationCacheService_base: (new () => {
         size(): Promise<number>;
     };
 }, "prototype">;
-declare class NotificationCacheService extends NotificationCacheService_base {
+declare class NotificationConnectionService extends NotificationConnectionService_base {
     readonly loggerService: LoggerService;
-    private _cacheKey;
-    hasNotificationId(backtest: boolean, notificationId: string): Promise<boolean>;
-    getNotificationId(backtest: boolean, notificationId: string): Promise<string | null>;
-    setNotificationId(row: INotificationRow): Promise<string>;
+    register: (objectName: string) => Promise<void>;
+    listNewest: (limit: number, prefix?: string) => Promise<string[]>;
+}
+
+declare const NotificationDataService_base: (new () => {
+    readonly loggerService: LoggerService;
+    readonly minioService: MinioService;
+    readonly BUCKET_NAME: string;
+    set(key: string, value: unknown): Promise<void>;
+    get<T = unknown>(key: string | null): Promise<T | null>;
+    has(key: string): Promise<boolean>;
+    delete(key: string): Promise<void>;
+    clear(prefix?: string): Promise<void>;
+    keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+    values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+    iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+    toArray(prefix?: string): Promise<[string, unknown][]>;
+    size(prefix?: string): Promise<number>;
+}) & Omit<{
+    new (BUCKET_NAME: string): {
+        readonly loggerService: LoggerService;
+        readonly minioService: MinioService;
+        readonly BUCKET_NAME: string;
+        set(key: string, value: unknown): Promise<void>;
+        get<T = unknown>(key: string | null): Promise<T | null>;
+        has(key: string): Promise<boolean>;
+        delete(key: string): Promise<void>;
+        clear(prefix?: string): Promise<void>;
+        keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+        values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+        iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+        toArray(prefix?: string): Promise<[string, unknown][]>;
+        size(prefix?: string): Promise<number>;
+    };
+}, "prototype">;
+declare class NotificationDataService extends NotificationDataService_base {
+    readonly loggerService: LoggerService;
+    readonly notificationConnectionService: NotificationConnectionService;
+    private _persistedKeys;
+    private _rememberKey;
+    upsert: (backtest: boolean, notificationId: string, payload: NotificationModel) => Promise<void>;
+    findByNotificationId: (backtest: boolean, notificationId: string, when: Date) => Promise<INotificationRow | null>;
+    listByMode: (backtest: boolean) => Promise<INotificationRow[]>;
 }
 
 interface ILogDto {
@@ -471,7 +573,7 @@ interface ILogRow extends ILogDto {
     updatedDate: Date;
 }
 
-declare const LogCacheService_base: (new () => {
+declare const LogConnectionService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly connectionKey: string;
     readonly ttlExpireSeconds: number;
@@ -504,11 +606,51 @@ declare const LogCacheService_base: (new () => {
         size(): Promise<number>;
     };
 }, "prototype">;
-declare class LogCacheService extends LogCacheService_base {
+declare class LogConnectionService extends LogConnectionService_base {
     readonly loggerService: LoggerService;
-    hasLogId(entryId: string): Promise<boolean>;
-    getLogId(entryId: string): Promise<string | null>;
-    setLogId(row: ILogRow): Promise<string>;
+    register: (objectName: string) => Promise<void>;
+    listNewest: (limit: number, prefix?: string) => Promise<string[]>;
+}
+
+declare const LogDataService_base: (new () => {
+    readonly loggerService: LoggerService;
+    readonly minioService: MinioService;
+    readonly BUCKET_NAME: string;
+    set(key: string, value: unknown): Promise<void>;
+    get<T = unknown>(key: string | null): Promise<T | null>;
+    has(key: string): Promise<boolean>;
+    delete(key: string): Promise<void>;
+    clear(prefix?: string): Promise<void>;
+    keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+    values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+    iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+    toArray(prefix?: string): Promise<[string, unknown][]>;
+    size(prefix?: string): Promise<number>;
+}) & Omit<{
+    new (BUCKET_NAME: string): {
+        readonly loggerService: LoggerService;
+        readonly minioService: MinioService;
+        readonly BUCKET_NAME: string;
+        set(key: string, value: unknown): Promise<void>;
+        get<T = unknown>(key: string | null): Promise<T | null>;
+        has(key: string): Promise<boolean>;
+        delete(key: string): Promise<void>;
+        clear(prefix?: string): Promise<void>;
+        keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+        values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+        iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+        toArray(prefix?: string): Promise<[string, unknown][]>;
+        size(prefix?: string): Promise<number>;
+    };
+}, "prototype">;
+declare class LogDataService extends LogDataService_base {
+    readonly loggerService: LoggerService;
+    readonly logConnectionService: LogConnectionService;
+    private _persistedKeys;
+    private _rememberKey;
+    upsert: (entryId: string, payload: ILogEntry) => Promise<void>;
+    findByEntryId: (entryId: string, when: Date) => Promise<ILogRow | null>;
+    listAll: () => Promise<ILogRow[]>;
 }
 
 interface IMeasureDto {
@@ -523,45 +665,43 @@ interface IMeasureRow extends IMeasureDto {
     updatedDate: Date;
 }
 
-declare const MeasureCacheService_base: (new () => {
+declare const MeasureDataService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly connectionKey: string;
-    readonly ttlExpireSeconds: number;
-    _getItemKey(key: string): string;
+    readonly minioService: MinioService;
+    readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
-    get(key: string | null): Promise<unknown | null>;
-    delete(key: string): Promise<void>;
+    get<T = unknown>(key: string | null): Promise<T | null>;
     has(key: string): Promise<boolean>;
-    clear(): Promise<void>;
-    toArray(): Promise<[string, unknown][]>;
-    iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-    keys(): AsyncIterableIterator<string>;
-    values(): AsyncIterableIterator<unknown>;
-    size(): Promise<number>;
+    delete(key: string): Promise<void>;
+    clear(prefix?: string): Promise<void>;
+    keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+    values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+    iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+    toArray(prefix?: string): Promise<[string, unknown][]>;
+    size(prefix?: string): Promise<number>;
 }) & Omit<{
-    new (connectionKey: string, ttlExpireSeconds?: number): {
+    new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
-        readonly connectionKey: string;
-        readonly ttlExpireSeconds: number;
-        _getItemKey(key: string): string;
+        readonly minioService: MinioService;
+        readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
-        get(key: string | null): Promise<unknown | null>;
-        delete(key: string): Promise<void>;
+        get<T = unknown>(key: string | null): Promise<T | null>;
         has(key: string): Promise<boolean>;
-        clear(): Promise<void>;
-        toArray(): Promise<[string, unknown][]>;
-        iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-        keys(): AsyncIterableIterator<string>;
-        values(): AsyncIterableIterator<unknown>;
-        size(): Promise<number>;
+        delete(key: string): Promise<void>;
+        clear(prefix?: string): Promise<void>;
+        keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+        values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+        iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+        toArray(prefix?: string): Promise<[string, unknown][]>;
+        size(prefix?: string): Promise<number>;
     };
 }, "prototype">;
-declare class MeasureCacheService extends MeasureCacheService_base {
+declare class MeasureDataService extends MeasureDataService_base {
     readonly loggerService: LoggerService;
-    private _cacheKey;
-    hasMeasureId(bucket: string, entryKey: string): Promise<boolean>;
-    getMeasureId(bucket: string, entryKey: string): Promise<string | null>;
-    setMeasureId(row: IMeasureRow): Promise<string>;
+    upsert: (bucket: string, entryKey: string, payload: MeasureData) => Promise<void>;
+    findByKey: (bucket: string, entryKey: string) => Promise<IMeasureRow | null>;
+    softRemove: (bucket: string, entryKey: string) => Promise<void>;
+    listKeys: (bucket: string) => Promise<string[]>;
 }
 
 interface IIntervalDto {
@@ -577,46 +717,44 @@ interface IIntervalRow extends IIntervalDto {
     updatedDate: Date;
 }
 
-declare const IntervalCacheService_base: (new () => {
+declare const IntervalDataService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly connectionKey: string;
-    readonly ttlExpireSeconds: number;
-    _getItemKey(key: string): string;
+    readonly minioService: MinioService;
+    readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
-    get(key: string | null): Promise<unknown | null>;
-    delete(key: string): Promise<void>;
+    get<T = unknown>(key: string | null): Promise<T | null>;
     has(key: string): Promise<boolean>;
-    clear(): Promise<void>;
-    toArray(): Promise<[string, unknown][]>;
-    iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-    keys(): AsyncIterableIterator<string>;
-    values(): AsyncIterableIterator<unknown>;
-    size(): Promise<number>;
+    delete(key: string): Promise<void>;
+    clear(prefix?: string): Promise<void>;
+    keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+    values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+    iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+    toArray(prefix?: string): Promise<[string, unknown][]>;
+    size(prefix?: string): Promise<number>;
 }) & Omit<{
-    new (connectionKey: string, ttlExpireSeconds?: number): {
+    new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
-        readonly connectionKey: string;
-        readonly ttlExpireSeconds: number;
-        _getItemKey(key: string): string;
+        readonly minioService: MinioService;
+        readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
-        get(key: string | null): Promise<unknown | null>;
-        delete(key: string): Promise<void>;
+        get<T = unknown>(key: string | null): Promise<T | null>;
         has(key: string): Promise<boolean>;
-        clear(): Promise<void>;
-        toArray(): Promise<[string, unknown][]>;
-        iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-        keys(): AsyncIterableIterator<string>;
-        values(): AsyncIterableIterator<unknown>;
-        size(): Promise<number>;
+        delete(key: string): Promise<void>;
+        clear(prefix?: string): Promise<void>;
+        keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+        values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+        iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+        toArray(prefix?: string): Promise<[string, unknown][]>;
+        size(prefix?: string): Promise<number>;
     };
 }, "prototype">;
-declare class IntervalCacheService extends IntervalCacheService_base {
+declare class IntervalDataService extends IntervalDataService_base {
     readonly loggerService: LoggerService;
-    private _cacheKey;
-    hasIntervalId(bucket: string, entryKey: string): Promise<boolean>;
-    getIntervalId(bucket: string, entryKey: string): Promise<string | null>;
-    setIntervalId(row: IIntervalRow): Promise<string>;
-    deleteIntervalId(bucket: string, entryKey: string): Promise<void>;
+    upsert: (bucket: string, entryKey: string, payload: IntervalData, when: Date) => Promise<void>;
+    findByKey: (bucket: string, entryKey: string) => Promise<IIntervalRow | null>;
+    softRemove: (bucket: string, entryKey: string) => Promise<void>;
+    listKeys: (bucket: string) => Promise<string[]>;
+    clearBucket: (bucket: string) => Promise<void>;
 }
 
 interface IMemoryDto {
@@ -633,45 +771,44 @@ interface IMemoryRow extends IMemoryDto {
     updatedDate: Date;
 }
 
-declare const MemoryCacheService_base: (new () => {
+declare const MemoryDataService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly connectionKey: string;
-    readonly ttlExpireSeconds: number;
-    _getItemKey(key: string): string;
+    readonly minioService: MinioService;
+    readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
-    get(key: string | null): Promise<unknown | null>;
-    delete(key: string): Promise<void>;
+    get<T = unknown>(key: string | null): Promise<T | null>;
     has(key: string): Promise<boolean>;
-    clear(): Promise<void>;
-    toArray(): Promise<[string, unknown][]>;
-    iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-    keys(): AsyncIterableIterator<string>;
-    values(): AsyncIterableIterator<unknown>;
-    size(): Promise<number>;
+    delete(key: string): Promise<void>;
+    clear(prefix?: string): Promise<void>;
+    keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+    values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+    iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+    toArray(prefix?: string): Promise<[string, unknown][]>;
+    size(prefix?: string): Promise<number>;
 }) & Omit<{
-    new (connectionKey: string, ttlExpireSeconds?: number): {
+    new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
-        readonly connectionKey: string;
-        readonly ttlExpireSeconds: number;
-        _getItemKey(key: string): string;
+        readonly minioService: MinioService;
+        readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
-        get(key: string | null): Promise<unknown | null>;
-        delete(key: string): Promise<void>;
+        get<T = unknown>(key: string | null): Promise<T | null>;
         has(key: string): Promise<boolean>;
-        clear(): Promise<void>;
-        toArray(): Promise<[string, unknown][]>;
-        iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-        keys(): AsyncIterableIterator<string>;
-        values(): AsyncIterableIterator<unknown>;
-        size(): Promise<number>;
+        delete(key: string): Promise<void>;
+        clear(prefix?: string): Promise<void>;
+        keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+        values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+        iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+        toArray(prefix?: string): Promise<[string, unknown][]>;
+        size(prefix?: string): Promise<number>;
     };
 }, "prototype">;
-declare class MemoryCacheService extends MemoryCacheService_base {
+declare class MemoryDataService extends MemoryDataService_base {
     readonly loggerService: LoggerService;
-    private _cacheKey;
-    hasMemoryEntryId(signalId: string, bucketName: string, memoryId: string): Promise<boolean>;
-    getMemoryEntryId(signalId: string, bucketName: string, memoryId: string): Promise<string | null>;
-    setMemoryEntryId(row: IMemoryRow): Promise<string>;
+    upsert: (signalId: string, bucketName: string, memoryId: string, payload: MemoryData, when: Date) => Promise<void>;
+    findByMemoryId: (signalId: string, bucketName: string, memoryId: string) => Promise<IMemoryRow | null>;
+    hasMemoryEntry: (signalId: string, bucketName: string, memoryId: string) => Promise<boolean>;
+    softRemove: (signalId: string, bucketName: string, memoryId: string) => Promise<void>;
+    listEntries: (signalId: string, bucketName: string) => Promise<IMemoryRow[]>;
 }
 
 interface IRecentDto {
@@ -689,45 +826,41 @@ interface IRecentRow extends IRecentDto {
     updatedDate: Date;
 }
 
-declare const RecentCacheService_base: (new () => {
+declare const RecentDataService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly connectionKey: string;
-    readonly ttlExpireSeconds: number;
-    _getItemKey(key: string): string;
+    readonly minioService: MinioService;
+    readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
-    get(key: string | null): Promise<unknown | null>;
-    delete(key: string): Promise<void>;
+    get<T = unknown>(key: string | null): Promise<T | null>;
     has(key: string): Promise<boolean>;
-    clear(): Promise<void>;
-    toArray(): Promise<[string, unknown][]>;
-    iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-    keys(): AsyncIterableIterator<string>;
-    values(): AsyncIterableIterator<unknown>;
-    size(): Promise<number>;
+    delete(key: string): Promise<void>;
+    clear(prefix?: string): Promise<void>;
+    keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+    values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+    iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+    toArray(prefix?: string): Promise<[string, unknown][]>;
+    size(prefix?: string): Promise<number>;
 }) & Omit<{
-    new (connectionKey: string, ttlExpireSeconds?: number): {
+    new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
-        readonly connectionKey: string;
-        readonly ttlExpireSeconds: number;
-        _getItemKey(key: string): string;
+        readonly minioService: MinioService;
+        readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
-        get(key: string | null): Promise<unknown | null>;
-        delete(key: string): Promise<void>;
+        get<T = unknown>(key: string | null): Promise<T | null>;
         has(key: string): Promise<boolean>;
-        clear(): Promise<void>;
-        toArray(): Promise<[string, unknown][]>;
-        iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-        keys(): AsyncIterableIterator<string>;
-        values(): AsyncIterableIterator<unknown>;
-        size(): Promise<number>;
+        delete(key: string): Promise<void>;
+        clear(prefix?: string): Promise<void>;
+        keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+        values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+        iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+        toArray(prefix?: string): Promise<[string, unknown][]>;
+        size(prefix?: string): Promise<number>;
     };
 }, "prototype">;
-declare class RecentCacheService extends RecentCacheService_base {
+declare class RecentDataService extends RecentDataService_base {
     readonly loggerService: LoggerService;
-    private _cacheKey;
-    hasRecentId(symbol: string, strategyName: string, exchangeName: string, frameName: string, backtest: boolean): Promise<boolean>;
-    getRecentId(symbol: string, strategyName: string, exchangeName: string, frameName: string, backtest: boolean): Promise<string | null>;
-    setRecentId(row: IRecentRow): Promise<string>;
+    upsert: (symbol: string, strategyName: string, exchangeName: string, frameName: string, backtest: boolean, payload: IPublicSignalRow, when: Date) => Promise<void>;
+    findByContext: (symbol: string, strategyName: string, exchangeName: string, frameName: string, backtest: boolean) => Promise<IRecentRow | null>;
 }
 
 interface IStateDto {
@@ -742,51 +875,49 @@ interface IStateRow extends IStateDto {
     updatedDate: Date;
 }
 
-declare const StateCacheService_base: (new () => {
+declare const StateDataService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly connectionKey: string;
-    readonly ttlExpireSeconds: number;
-    _getItemKey(key: string): string;
+    readonly minioService: MinioService;
+    readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
-    get(key: string | null): Promise<unknown | null>;
-    delete(key: string): Promise<void>;
+    get<T = unknown>(key: string | null): Promise<T | null>;
     has(key: string): Promise<boolean>;
-    clear(): Promise<void>;
-    toArray(): Promise<[string, unknown][]>;
-    iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-    keys(): AsyncIterableIterator<string>;
-    values(): AsyncIterableIterator<unknown>;
-    size(): Promise<number>;
+    delete(key: string): Promise<void>;
+    clear(prefix?: string): Promise<void>;
+    keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+    values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+    iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+    toArray(prefix?: string): Promise<[string, unknown][]>;
+    size(prefix?: string): Promise<number>;
 }) & Omit<{
-    new (connectionKey: string, ttlExpireSeconds?: number): {
+    new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
-        readonly connectionKey: string;
-        readonly ttlExpireSeconds: number;
-        _getItemKey(key: string): string;
+        readonly minioService: MinioService;
+        readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
-        get(key: string | null): Promise<unknown | null>;
-        delete(key: string): Promise<void>;
+        get<T = unknown>(key: string | null): Promise<T | null>;
         has(key: string): Promise<boolean>;
-        clear(): Promise<void>;
-        toArray(): Promise<[string, unknown][]>;
-        iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-        keys(): AsyncIterableIterator<string>;
-        values(): AsyncIterableIterator<unknown>;
-        size(): Promise<number>;
+        delete(key: string): Promise<void>;
+        clear(prefix?: string): Promise<void>;
+        keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+        values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+        iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+        toArray(prefix?: string): Promise<[string, unknown][]>;
+        size(prefix?: string): Promise<number>;
     };
 }, "prototype">;
-declare class StateCacheService extends StateCacheService_base {
+declare class StateDataService extends StateDataService_base {
     readonly loggerService: LoggerService;
-    private _cacheKey;
-    hasStateId(signalId: string, bucketName: string): Promise<boolean>;
-    getStateId(signalId: string, bucketName: string): Promise<string | null>;
-    setStateId(row: IStateRow): Promise<string>;
+    upsert: (signalId: string, bucketName: string, payload: StateData, when: Date) => Promise<void>;
+    findByContext: (signalId: string, bucketName: string) => Promise<IStateRow | null>;
 }
 
 interface ISessionDto {
     strategyName: string;
     exchangeName: string;
     frameName: string;
+    symbol: string;
+    backtest: boolean;
     payload: SessionData;
     when: number;
 }
@@ -796,723 +927,66 @@ interface ISessionRow extends ISessionDto {
     updatedDate: Date;
 }
 
-declare const SessionCacheService_base: (new () => {
+declare const SessionDataService_base: (new () => {
     readonly loggerService: LoggerService;
-    readonly connectionKey: string;
-    readonly ttlExpireSeconds: number;
-    _getItemKey(key: string): string;
+    readonly minioService: MinioService;
+    readonly BUCKET_NAME: string;
     set(key: string, value: unknown): Promise<void>;
-    get(key: string | null): Promise<unknown | null>;
-    delete(key: string): Promise<void>;
+    get<T = unknown>(key: string | null): Promise<T | null>;
     has(key: string): Promise<boolean>;
-    clear(): Promise<void>;
-    toArray(): Promise<[string, unknown][]>;
-    iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-    keys(): AsyncIterableIterator<string>;
-    values(): AsyncIterableIterator<unknown>;
-    size(): Promise<number>;
+    delete(key: string): Promise<void>;
+    clear(prefix?: string): Promise<void>;
+    keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+    values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+    iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+    toArray(prefix?: string): Promise<[string, unknown][]>;
+    size(prefix?: string): Promise<number>;
 }) & Omit<{
-    new (connectionKey: string, ttlExpireSeconds?: number): {
+    new (BUCKET_NAME: string): {
         readonly loggerService: LoggerService;
-        readonly connectionKey: string;
-        readonly ttlExpireSeconds: number;
-        _getItemKey(key: string): string;
+        readonly minioService: MinioService;
+        readonly BUCKET_NAME: string;
         set(key: string, value: unknown): Promise<void>;
-        get(key: string | null): Promise<unknown | null>;
-        delete(key: string): Promise<void>;
+        get<T = unknown>(key: string | null): Promise<T | null>;
         has(key: string): Promise<boolean>;
-        clear(): Promise<void>;
-        toArray(): Promise<[string, unknown][]>;
-        iterate(): AsyncIterableIterator<readonly [string, unknown]>;
-        keys(): AsyncIterableIterator<string>;
-        values(): AsyncIterableIterator<unknown>;
-        size(): Promise<number>;
+        delete(key: string): Promise<void>;
+        clear(prefix?: string): Promise<void>;
+        keys(prefix?: string, limit?: number): AsyncIterableIterator<string>;
+        values(prefix?: string, limit?: number): AsyncIterableIterator<unknown>;
+        iterate(prefix?: string, limit?: number): AsyncIterableIterator<readonly [string, unknown]>;
+        toArray(prefix?: string): Promise<[string, unknown][]>;
+        size(prefix?: string): Promise<number>;
     };
 }, "prototype">;
-declare class SessionCacheService extends SessionCacheService_base {
+declare class SessionDataService extends SessionDataService_base {
     readonly loggerService: LoggerService;
-    private _cacheKey;
-    hasSessionId(strategyName: string, exchangeName: string, frameName: string): Promise<boolean>;
-    getSessionId(strategyName: string, exchangeName: string, frameName: string): Promise<string | null>;
-    setSessionId(row: ISessionRow): Promise<string>;
-}
-
-declare const CandleDbService_base: (new () => {
-    readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
-    create(dto: object): Promise<any>;
-    update(id: string, dto: object): Promise<any>;
-    findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
-}) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
-        readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
-        create(dto: object): Promise<any>;
-        update(id: string, dto: object): Promise<any>;
-        findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
-    };
-}, "prototype">;
-declare class CandleDbService extends CandleDbService_base {
-    readonly loggerService: LoggerService;
-    readonly candleCacheService: CandleCacheService;
-    create: (dto: ICandleDto) => Promise<ICandleRow>;
-    hasCandle: (symbol: string, interval: CandleInterval, timestamp: number) => Promise<boolean>;
-    findBySymbolIntervalTimestamp: (symbol: string, interval: CandleInterval, timestamp: number) => Promise<ICandleRow | null>;
-}
-
-declare const SignalDbService_base: (new () => {
-    readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
-    create(dto: object): Promise<any>;
-    update(id: string, dto: object): Promise<any>;
-    findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
-}) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
-        readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
-        create(dto: object): Promise<any>;
-        update(id: string, dto: object): Promise<any>;
-        findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
-    };
-}, "prototype">;
-declare class SignalDbService extends SignalDbService_base {
-    readonly loggerService: LoggerService;
-    readonly signalCacheService: SignalCacheService;
-    upsert: (symbol: string, strategyName: string, exchangeName: string, payload: ISignalRow | null) => Promise<void>;
-    findByContext: (symbol: string, strategyName: string, exchangeName: string) => Promise<ISignalRowDoc | null>;
-}
-
-declare const ScheduleDbService_base: (new () => {
-    readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
-    create(dto: object): Promise<any>;
-    update(id: string, dto: object): Promise<any>;
-    findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
-}) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
-        readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
-        create(dto: object): Promise<any>;
-        update(id: string, dto: object): Promise<any>;
-        findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
-    };
-}, "prototype">;
-declare class ScheduleDbService extends ScheduleDbService_base {
-    readonly loggerService: LoggerService;
-    readonly scheduleCacheService: ScheduleCacheService;
-    upsert: (symbol: string, strategyName: string, exchangeName: string, payload: IScheduledSignalRow | null) => Promise<void>;
-    findByContext: (symbol: string, strategyName: string, exchangeName: string) => Promise<IScheduleRow | null>;
-}
-
-declare const RiskDbService_base: (new () => {
-    readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
-    create(dto: object): Promise<any>;
-    update(id: string, dto: object): Promise<any>;
-    findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
-}) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
-        readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
-        create(dto: object): Promise<any>;
-        update(id: string, dto: object): Promise<any>;
-        findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
-    };
-}, "prototype">;
-declare class RiskDbService extends RiskDbService_base {
-    readonly loggerService: LoggerService;
-    readonly riskCacheService: RiskCacheService;
-    upsert: (riskName: string, exchangeName: string, positions: RiskData, when: Date) => Promise<void>;
-    findByContext: (riskName: string, exchangeName: string) => Promise<IRiskRow | null>;
-}
-
-declare const PartialDbService_base: (new () => {
-    readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
-    create(dto: object): Promise<any>;
-    update(id: string, dto: object): Promise<any>;
-    findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
-}) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
-        readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
-        create(dto: object): Promise<any>;
-        update(id: string, dto: object): Promise<any>;
-        findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
-    };
-}, "prototype">;
-declare class PartialDbService extends PartialDbService_base {
-    readonly loggerService: LoggerService;
-    readonly partialCacheService: PartialCacheService;
-    upsert: (symbol: string, strategyName: string, exchangeName: string, signalId: string, payload: PartialData, when: Date) => Promise<void>;
-    findByContext: (symbol: string, strategyName: string, exchangeName: string, signalId: string) => Promise<IPartialRow | null>;
-}
-
-declare const BreakevenDbService_base: (new () => {
-    readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
-    create(dto: object): Promise<any>;
-    update(id: string, dto: object): Promise<any>;
-    findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
-}) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
-        readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
-        create(dto: object): Promise<any>;
-        update(id: string, dto: object): Promise<any>;
-        findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
-    };
-}, "prototype">;
-declare class BreakevenDbService extends BreakevenDbService_base {
-    readonly loggerService: LoggerService;
-    readonly breakevenCacheService: BreakevenCacheService;
-    upsert: (symbol: string, strategyName: string, exchangeName: string, signalId: string, payload: BreakevenData, when: Date) => Promise<void>;
-    findByContext: (symbol: string, strategyName: string, exchangeName: string, signalId: string) => Promise<IBreakevenRow | null>;
-}
-
-declare const StorageDbService_base: (new () => {
-    readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
-    create(dto: object): Promise<any>;
-    update(id: string, dto: object): Promise<any>;
-    findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
-}) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
-        readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
-        create(dto: object): Promise<any>;
-        update(id: string, dto: object): Promise<any>;
-        findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
-    };
-}, "prototype">;
-declare class StorageDbService extends StorageDbService_base {
-    readonly loggerService: LoggerService;
-    readonly storageCacheService: StorageCacheService;
-    upsert: (backtest: boolean, signalId: string, payload: IStorageSignalRow) => Promise<void>;
-    findBySignalId: (backtest: boolean, signalId: string) => Promise<IStorageRow | null>;
-    listByMode: (backtest: boolean) => Promise<IStorageRow[]>;
-}
-
-declare const NotificationDbService_base: (new () => {
-    readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
-    create(dto: object): Promise<any>;
-    update(id: string, dto: object): Promise<any>;
-    findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
-}) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
-        readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
-        create(dto: object): Promise<any>;
-        update(id: string, dto: object): Promise<any>;
-        findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
-    };
-}, "prototype">;
-declare class NotificationDbService extends NotificationDbService_base {
-    readonly loggerService: LoggerService;
-    readonly notificationCacheService: NotificationCacheService;
-    upsert: (backtest: boolean, notificationId: string, payload: NotificationModel) => Promise<void>;
-    findByNotificationId: (backtest: boolean, notificationId: string) => Promise<INotificationRow | null>;
-    listByMode: (backtest: boolean) => Promise<INotificationRow[]>;
-}
-
-declare const LogDbService_base: (new () => {
-    readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
-    create(dto: object): Promise<any>;
-    update(id: string, dto: object): Promise<any>;
-    findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
-}) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
-        readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
-        create(dto: object): Promise<any>;
-        update(id: string, dto: object): Promise<any>;
-        findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
-    };
-}, "prototype">;
-declare class LogDbService extends LogDbService_base {
-    readonly loggerService: LoggerService;
-    readonly logCacheService: LogCacheService;
-    upsert: (entryId: string, payload: ILogEntry) => Promise<void>;
-    findByEntryId: (entryId: string) => Promise<ILogRow | null>;
-    listAll: () => Promise<ILogRow[]>;
-}
-
-declare const MeasureDbService_base: (new () => {
-    readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
-    create(dto: object): Promise<any>;
-    update(id: string, dto: object): Promise<any>;
-    findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
-}) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
-        readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
-        create(dto: object): Promise<any>;
-        update(id: string, dto: object): Promise<any>;
-        findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
-    };
-}, "prototype">;
-declare class MeasureDbService extends MeasureDbService_base {
-    readonly loggerService: LoggerService;
-    readonly measureCacheService: MeasureCacheService;
-    upsert: (bucket: string, entryKey: string, payload: MeasureData) => Promise<void>;
-    findByKey: (bucket: string, entryKey: string) => Promise<IMeasureRow | null>;
-    softRemove: (bucket: string, entryKey: string) => Promise<void>;
-    listKeys: (bucket: string) => Promise<string[]>;
-}
-
-declare const IntervalDbService_base: (new () => {
-    readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
-    create(dto: object): Promise<any>;
-    update(id: string, dto: object): Promise<any>;
-    findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
-}) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
-        readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
-        create(dto: object): Promise<any>;
-        update(id: string, dto: object): Promise<any>;
-        findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
-    };
-}, "prototype">;
-declare class IntervalDbService extends IntervalDbService_base {
-    readonly loggerService: LoggerService;
-    readonly intervalCacheService: IntervalCacheService;
-    upsert: (bucket: string, entryKey: string, payload: IntervalData, when: Date) => Promise<void>;
-    findByKey: (bucket: string, entryKey: string) => Promise<IIntervalRow | null>;
-    softRemove: (bucket: string, entryKey: string) => Promise<void>;
-    listKeys: (bucket: string) => Promise<string[]>;
-    clearBucket: (bucket: string) => Promise<void>;
-}
-
-declare const MemoryDbService_base: (new () => {
-    readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
-    create(dto: object): Promise<any>;
-    update(id: string, dto: object): Promise<any>;
-    findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
-}) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
-        readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
-        create(dto: object): Promise<any>;
-        update(id: string, dto: object): Promise<any>;
-        findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
-    };
-}, "prototype">;
-declare class MemoryDbService extends MemoryDbService_base {
-    readonly loggerService: LoggerService;
-    readonly memoryCacheService: MemoryCacheService;
-    upsert: (signalId: string, bucketName: string, memoryId: string, payload: MemoryData, when: Date) => Promise<void>;
-    findByMemoryId: (signalId: string, bucketName: string, memoryId: string) => Promise<IMemoryRow | null>;
-    hasMemoryEntry: (signalId: string, bucketName: string, memoryId: string) => Promise<boolean>;
-    softRemove: (signalId: string, bucketName: string, memoryId: string) => Promise<void>;
-    listEntries: (signalId: string, bucketName: string) => Promise<IMemoryRow[]>;
-}
-
-declare const RecentDbService_base: (new () => {
-    readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
-    create(dto: object): Promise<any>;
-    update(id: string, dto: object): Promise<any>;
-    findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
-}) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
-        readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
-        create(dto: object): Promise<any>;
-        update(id: string, dto: object): Promise<any>;
-        findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
-    };
-}, "prototype">;
-declare class RecentDbService extends RecentDbService_base {
-    readonly loggerService: LoggerService;
-    readonly recentCacheService: RecentCacheService;
-    upsert: (symbol: string, strategyName: string, exchangeName: string, frameName: string, backtest: boolean, payload: IPublicSignalRow, when: Date) => Promise<void>;
-    findByContext: (symbol: string, strategyName: string, exchangeName: string, frameName: string, backtest: boolean) => Promise<IRecentRow | null>;
-}
-
-declare const StateDbService_base: (new () => {
-    readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
-    create(dto: object): Promise<any>;
-    update(id: string, dto: object): Promise<any>;
-    findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
-}) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
-        readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
-        create(dto: object): Promise<any>;
-        update(id: string, dto: object): Promise<any>;
-        findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
-    };
-}, "prototype">;
-declare class StateDbService extends StateDbService_base {
-    readonly loggerService: LoggerService;
-    readonly stateCacheService: StateCacheService;
-    upsert: (signalId: string, bucketName: string, payload: StateData, when: Date) => Promise<void>;
-    findByContext: (signalId: string, bucketName: string) => Promise<IStateRow | null>;
-}
-
-declare const SessionDbService_base: (new () => {
-    readonly loggerService: LoggerService;
-    readonly TargetModel: mongoose.Model<any>;
-    create(dto: object): Promise<any>;
-    update(id: string, dto: object): Promise<any>;
-    findById(id: string): Promise<any>;
-    findByFilter(filterData: object, sort?: object): Promise<any>;
-    findAll(filterData?: object, limit?: number): Promise<any[]>;
-    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-    paginate(filterData: object, pagination: {
-        limit: number;
-        offset: number;
-    }, sort?: object): Promise<{
-        rows: any[];
-        total: number;
-    }>;
-}) & Omit<{
-    new (TargetModel: mongoose.Model<any>): {
-        readonly loggerService: LoggerService;
-        readonly TargetModel: mongoose.Model<any>;
-        create(dto: object): Promise<any>;
-        update(id: string, dto: object): Promise<any>;
-        findById(id: string): Promise<any>;
-        findByFilter(filterData: object, sort?: object): Promise<any>;
-        findAll(filterData?: object, limit?: number): Promise<any[]>;
-        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
-        paginate(filterData: object, pagination: {
-            limit: number;
-            offset: number;
-        }, sort?: object): Promise<{
-            rows: any[];
-            total: number;
-        }>;
-    };
-}, "prototype">;
-declare class SessionDbService extends SessionDbService_base {
-    readonly loggerService: LoggerService;
-    readonly sessionCacheService: SessionCacheService;
-    upsert: (strategyName: string, exchangeName: string, frameName: string, payload: SessionData, when: Date) => Promise<void>;
-    findByContext: (strategyName: string, exchangeName: string, frameName: string) => Promise<ISessionRow | null>;
+    upsert: (strategyName: string, exchangeName: string, frameName: string, symbol: string, backtest: boolean, payload: SessionData, when: Date) => Promise<void>;
+    findByContext: (strategyName: string, exchangeName: string, frameName: string, symbol: string, backtest: boolean) => Promise<ISessionRow | null>;
 }
 
 declare const ioc: {
-    candleDbService: CandleDbService;
-    signalDbService: SignalDbService;
-    scheduleDbService: ScheduleDbService;
-    riskDbService: RiskDbService;
-    partialDbService: PartialDbService;
-    breakevenDbService: BreakevenDbService;
-    storageDbService: StorageDbService;
-    notificationDbService: NotificationDbService;
-    logDbService: LogDbService;
-    measureDbService: MeasureDbService;
-    intervalDbService: IntervalDbService;
-    memoryDbService: MemoryDbService;
-    recentDbService: RecentDbService;
-    stateDbService: StateDbService;
-    sessionDbService: SessionDbService;
-    candleCacheService: CandleCacheService;
-    signalCacheService: SignalCacheService;
-    scheduleCacheService: ScheduleCacheService;
-    riskCacheService: RiskCacheService;
-    partialCacheService: PartialCacheService;
-    breakevenCacheService: BreakevenCacheService;
-    storageCacheService: StorageCacheService;
-    notificationCacheService: NotificationCacheService;
-    logCacheService: LogCacheService;
-    measureCacheService: MeasureCacheService;
-    intervalCacheService: IntervalCacheService;
-    memoryCacheService: MemoryCacheService;
-    recentCacheService: RecentCacheService;
-    stateCacheService: StateCacheService;
-    sessionCacheService: SessionCacheService;
+    logConnectionService: LogConnectionService;
+    notificationConnectionService: NotificationConnectionService;
+    storageConnectionService: StorageConnectionService;
+    candleDataService: CandleDataService;
+    signalDataService: SignalDataService;
+    scheduleDataService: ScheduleDataService;
+    strategyDataService: StrategyDataService;
+    riskDataService: RiskDataService;
+    partialDataService: PartialDataService;
+    breakevenDataService: BreakevenDataService;
+    storageDataService: StorageDataService;
+    notificationDataService: NotificationDataService;
+    logDataService: LogDataService;
+    measureDataService: MeasureDataService;
+    intervalDataService: IntervalDataService;
+    memoryDataService: MemoryDataService;
+    recentDataService: RecentDataService;
+    stateDataService: StateDataService;
+    sessionDataService: SessionDataService;
     loggerService: LoggerService;
-    mongoService: MongooseService;
     redisService: RedisService;
+    minioService: MinioService;
 };
 
 export { ioc };

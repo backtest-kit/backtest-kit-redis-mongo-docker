@@ -70,10 +70,7 @@ const INTERVAL_MINUTES: Record<CandleInterval, number> = {
 
 const waitForInfra = singleshot(
   async () => {
-    await Promise.all([
-      ioc.mongoService.waitForInit(),
-      ioc.redisService.waitForInit(),
-    ]);
+    await ioc.redisService.waitForInit();
   }
 );
 
