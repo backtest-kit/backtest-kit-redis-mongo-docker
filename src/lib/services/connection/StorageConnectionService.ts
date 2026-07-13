@@ -12,6 +12,12 @@ const MS_PER_MINUTE = 60_000;
 /** Minutes probed per pipeline round trip while walking backwards. */
 const WALK_BATCH_SIZE = 1_000;
 
+/** Sets up to this cardinality are fetched with a single SMEMBERS. */
+const SMALL_SET_THRESHOLD = 1_000;
+
+/** Page size for SSCAN over hot minute sets. */
+const SSCAN_BATCH_SIZE = 1_000;
+
 const TIMESTAMP_PAD = String(Number.MAX_SAFE_INTEGER).length;
 
 const GET_MINUTE_KEY_FN = (connectionKey: string, minute: number) => {
@@ -52,41 +58,69 @@ export class StorageConnectionService extends BaseMap(REDIS_KEY, -1) {
     const seen = new Set<string>();
     const names: string[] = [];
 
+    const collect = (members: string[]): boolean => {
+      for (const name of members) {
+        if (prefix && !name.startsWith(prefix)) {
+          continue;
+        }
+        if (seen.has(name)) {
+          continue;
+        }
+        seen.add(name);
+        names.push(name);
+        if (names.length >= limit) {
+          return true;
+        }
+      }
+      return false;
+    };
+
     while (minute >= floor && names.length < limit) {
       const batch: number[] = [];
       while (batch.length < WALK_BATCH_SIZE && minute >= floor) {
         batch.push(minute);
         minute -= MS_PER_MINUTE;
       }
-      const pipeline = redis.pipeline();
+      // Cheap cardinality probe: empty minutes are skipped without
+      // transferring a single member
+      const cardPipeline = redis.pipeline();
       for (const ts of batch) {
-        pipeline.smembers(GET_MINUTE_KEY_FN(this.connectionKey, ts));
+        cardPipeline.scard(GET_MINUTE_KEY_FN(this.connectionKey, ts));
       }
-      const results = await pipeline.exec();
-      if (!results) {
+      const cards = await cardPipeline.exec();
+      if (!cards) {
         break;
       }
       // Pipeline results follow command order: minutes descend, newest first
-      for (const [error, members] of results) {
-        if (error || !members) {
+      for (let i = 0; i < batch.length; i++) {
+        const [error, card] = cards[i];
+        if (error || !card) {
           continue;
         }
-        for (const name of members as string[]) {
-          if (prefix && !name.startsWith(prefix)) {
-            continue;
+        const minuteKey = GET_MINUTE_KEY_FN(this.connectionKey, batch[i]);
+        if ((card as number) <= SMALL_SET_THRESHOLD) {
+          if (collect(await redis.smembers(minuteKey))) {
+            return names;
           }
-          if (seen.has(name)) {
-            continue;
-          }
-          seen.add(name);
-          names.push(name);
+          continue;
         }
-        if (names.length >= limit) {
-          break;
+        // Hot minute (a fast backtest replay packs many records into one
+        // wall-clock minute): page through SSCAN with early exit instead of
+        // pulling the whole set in a single SMEMBERS
+        let cursor: string | number = 0;
+        while (true) {
+          const [nextCursor, members] = await redis.sscan(minuteKey, cursor, "COUNT", SSCAN_BATCH_SIZE);
+          cursor = nextCursor;
+          if (collect(members)) {
+            return names;
+          }
+          if (cursor === "0" || cursor === 0) {
+            break;
+          }
         }
       }
     }
-    return names.slice(0, Number.isFinite(limit) ? limit : names.length);
+    return names;
   };
 }
 
