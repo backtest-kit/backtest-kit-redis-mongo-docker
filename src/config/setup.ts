@@ -91,7 +91,7 @@ PersistCandleAdapter.usePersistCandleAdapter(class implements IPersistCandleInst
   }
   async writeCandlesData(candles: CandleData[]): Promise<void> {
     for (const candle of candles) {
-      await ioc.candleDbService.create({
+      await ioc.candleDataService.create({
         symbol: this.symbol,
         interval: this.interval,
         close: candle.close,
@@ -108,7 +108,7 @@ PersistCandleAdapter.usePersistCandleAdapter(class implements IPersistCandleInst
     const result: CandleData[] = [];
     for (let i = 0; i < limit; i++) {
       const ts = sinceTimestamp + i * stepMs;
-      const row = await ioc.candleDbService.findBySymbolIntervalTimestamp(this.symbol, this.interval, ts);
+      const row = await ioc.candleDataService.findBySymbolIntervalTimestamp(this.symbol, this.interval, ts);
       if (!row) {
         return null;
       }
@@ -131,11 +131,11 @@ PersistSignalAdapter.usePersistSignalAdapter(class implements IPersistSignalInst
     await waitForInfra();
   }
   async readSignalData(): Promise<ISignalRow | null> {
-    const row = await ioc.signalDbService.findByContext(this.symbol, this.strategyName, this.exchangeName);
+    const row = await ioc.signalDataService.findByContext(this.symbol, this.strategyName, this.exchangeName);
     return row ? row.payload : null;
   }
   async writeSignalData(signalRow: ISignalRow | null): Promise<void> {
-    await ioc.signalDbService.upsert(this.symbol, this.strategyName, this.exchangeName, signalRow);
+    await ioc.signalDataService.upsert(this.symbol, this.strategyName, this.exchangeName, signalRow);
   }
 });
 
@@ -151,11 +151,11 @@ PersistRiskAdapter.usePersistRiskAdapter(class implements IPersistRiskInstance {
     await waitForInfra();
   }
   async readPositionData(_when: Date): Promise<RiskData> {
-    const row = await ioc.riskDbService.findByContext(this.riskName, this.exchangeName);
+    const row = await ioc.riskDataService.findByContext(this.riskName, this.exchangeName);
     return row ? row.positions : [];
   }
   async writePositionData(positions: RiskData, when: Date): Promise<void> {
-    await ioc.riskDbService.upsert(this.riskName, this.exchangeName, positions, when);
+    await ioc.riskDataService.upsert(this.riskName, this.exchangeName, positions, when);
   }
 });
 
@@ -172,11 +172,11 @@ PersistScheduleAdapter.usePersistScheduleAdapter(class implements IPersistSchedu
     await waitForInfra();
   }
   async readScheduleData(): Promise<IScheduledSignalRow | null> {
-    const row = await ioc.scheduleDbService.findByContext(this.symbol, this.strategyName, this.exchangeName);
+    const row = await ioc.scheduleDataService.findByContext(this.symbol, this.strategyName, this.exchangeName);
     return row ? row.payload : null;
   }
   async writeScheduleData(scheduleRow: IScheduledSignalRow | null): Promise<void> {
-    await ioc.scheduleDbService.upsert(this.symbol, this.strategyName, this.exchangeName, scheduleRow);
+    await ioc.scheduleDataService.upsert(this.symbol, this.strategyName, this.exchangeName, scheduleRow);
   }
 });
 
@@ -193,11 +193,11 @@ PersistStrategyAdapter.usePersistStrategyAdapter(class implements IPersistStrate
     await waitForInfra();
   }
   async readStrategyData(): Promise<StrategyData | null> {
-    const row = await ioc.strategyDbService.findByContext(this.symbol, this.strategyName, this.exchangeName);
+    const row = await ioc.strategyDataService.findByContext(this.symbol, this.strategyName, this.exchangeName);
     return row ? row.payload : null;
   }
   async writeStrategyData(strategyRow: StrategyData | null): Promise<void> {
-    await ioc.strategyDbService.upsert(this.symbol, this.strategyName, this.exchangeName, strategyRow);
+    await ioc.strategyDataService.upsert(this.symbol, this.strategyName, this.exchangeName, strategyRow);
   }
 });
 
@@ -214,11 +214,11 @@ PersistPartialAdapter.usePersistPartialAdapter(class implements IPersistPartialI
     await waitForInfra();
   }
   async readPartialData(signalId: string, _when: Date): Promise<PartialData> {
-    const row = await ioc.partialDbService.findByContext(this.symbol, this.strategyName, this.exchangeName, signalId);
+    const row = await ioc.partialDataService.findByContext(this.symbol, this.strategyName, this.exchangeName, signalId);
     return row ? row.payload : {};
   }
   async writePartialData(data: PartialData, signalId: string, when: Date): Promise<void> {
-    await ioc.partialDbService.upsert(this.symbol, this.strategyName, this.exchangeName, signalId, data, when);
+    await ioc.partialDataService.upsert(this.symbol, this.strategyName, this.exchangeName, signalId, data, when);
   }
 });
 
@@ -235,11 +235,11 @@ PersistBreakevenAdapter.usePersistBreakevenAdapter(class implements IPersistBrea
     await waitForInfra();
   }
   async readBreakevenData(signalId: string, _when: Date): Promise<BreakevenData> {
-    const row = await ioc.breakevenDbService.findByContext(this.symbol, this.strategyName, this.exchangeName, signalId);
+    const row = await ioc.breakevenDataService.findByContext(this.symbol, this.strategyName, this.exchangeName, signalId);
     return row ? row.payload : {};
   }
   async writeBreakevenData(data: BreakevenData, signalId: string, when: Date): Promise<void> {
-    await ioc.breakevenDbService.upsert(this.symbol, this.strategyName, this.exchangeName, signalId, data, when);
+    await ioc.breakevenDataService.upsert(this.symbol, this.strategyName, this.exchangeName, signalId, data, when);
   }
 });
 
@@ -252,12 +252,12 @@ PersistStorageAdapter.usePersistStorageAdapter(class implements IPersistStorageI
     await waitForInfra();
   }
   async readStorageData(): Promise<StorageData> {
-    const rows = await ioc.storageDbService.listByMode(this.backtest);
+    const rows = await ioc.storageDataService.listByMode(this.backtest);
     return rows.map((row) => row.payload);
   }
   async writeStorageData(signals: StorageData): Promise<void> {
     for (const signal of signals) {
-      await ioc.storageDbService.upsert(this.backtest, signal.id, signal);
+      await ioc.storageDataService.upsert(this.backtest, signal.id, signal);
     }
   }
 });
@@ -271,12 +271,12 @@ PersistNotificationAdapter.usePersistNotificationAdapter(class implements IPersi
     await waitForInfra();
   }
   async readNotificationData(): Promise<NotificationData> {
-    const rows = await ioc.notificationDbService.listByMode(this.backtest);
+    const rows = await ioc.notificationDataService.listByMode(this.backtest);
     return rows.map((row) => row.payload).reverse();
   }
   async writeNotificationData(notifications: NotificationData): Promise<void> {
     for (const notification of notifications) {
-      await ioc.notificationDbService.upsert(this.backtest, notification.id, notification);
+      await ioc.notificationDataService.upsert(this.backtest, notification.id, notification);
     }
   }
 });
@@ -289,12 +289,12 @@ PersistLogAdapter.usePersistLogAdapter(class implements IPersistLogInstance {
     await waitForInfra();
   }
   async readLogData(): Promise<LogData> {
-    const rows = await ioc.logDbService.listAll();
+    const rows = await ioc.logDataService.listAll();
     return rows.map((row) => row.payload).reverse();
   }
   async writeLogData(entries: LogData): Promise<void> {
     for (const entry of entries) {
-      await ioc.logDbService.upsert(entry.id, entry);
+      await ioc.logDataService.upsert(entry.id, entry);
     }
   }
 });
@@ -308,20 +308,20 @@ PersistMeasureAdapter.usePersistMeasureAdapter(class implements IPersistMeasureI
     await waitForInfra();
   }
   async readMeasureData(key: string): Promise<MeasureData | null> {
-    const row = await ioc.measureDbService.findByKey(this.bucket, key);
+    const row = await ioc.measureDataService.findByKey(this.bucket, key);
     if (!row || row.removed) {
       return null;
     }
     return row.payload;
   }
   async writeMeasureData(data: MeasureData, key: string, _when: Date): Promise<void> {
-    await ioc.measureDbService.upsert(this.bucket, key, data);
+    await ioc.measureDataService.upsert(this.bucket, key, data);
   }
   async removeMeasureData(key: string): Promise<void> {
-    await ioc.measureDbService.softRemove(this.bucket, key);
+    await ioc.measureDataService.softRemove(this.bucket, key);
   }
   async *listMeasureData(): AsyncGenerator<string> {
-    const keys = await ioc.measureDbService.listKeys(this.bucket);
+    const keys = await ioc.measureDataService.listKeys(this.bucket);
     for (const key of keys) {
       yield key;
     }
@@ -337,20 +337,20 @@ PersistIntervalAdapter.usePersistIntervalAdapter(class implements IPersistInterv
     await waitForInfra();
   }
   async readIntervalData(key: string): Promise<IntervalData | null> {
-    const row = await ioc.intervalDbService.findByKey(this.bucket, key);
+    const row = await ioc.intervalDataService.findByKey(this.bucket, key);
     if (!row || row.removed) {
       return null;
     }
     return row.payload;
   }
   async writeIntervalData(data: IntervalData, key: string, when: Date): Promise<void> {
-    await ioc.intervalDbService.upsert(this.bucket, key, data, when);
+    await ioc.intervalDataService.upsert(this.bucket, key, data, when);
   }
   async removeIntervalData(key: string): Promise<void> {
-    await ioc.intervalDbService.softRemove(this.bucket, key);
+    await ioc.intervalDataService.softRemove(this.bucket, key);
   }
   async *listIntervalData(): AsyncGenerator<string> {
-    const keys = await ioc.intervalDbService.listKeys(this.bucket);
+    const keys = await ioc.intervalDataService.listKeys(this.bucket);
     for (const key of keys) {
       yield key;
     }
@@ -369,23 +369,23 @@ PersistMemoryAdapter.usePersistMemoryAdapter(class implements IPersistMemoryInst
     await waitForInfra();
   }
   async readMemoryData(memoryId: string): Promise<MemoryData | null> {
-    const row = await ioc.memoryDbService.findByMemoryId(this.signalId, this.bucketName, memoryId);
+    const row = await ioc.memoryDataService.findByMemoryId(this.signalId, this.bucketName, memoryId);
     if (!row || row.removed) {
       return null;
     }
     return row.payload;
   }
   async hasMemoryData(memoryId: string): Promise<boolean> {
-    return await ioc.memoryDbService.hasMemoryEntry(this.signalId, this.bucketName, memoryId);
+    return await ioc.memoryDataService.hasMemoryEntry(this.signalId, this.bucketName, memoryId);
   }
   async writeMemoryData(data: MemoryData, memoryId: string, when: Date): Promise<void> {
-    await ioc.memoryDbService.upsert(this.signalId, this.bucketName, memoryId, data, when);
+    await ioc.memoryDataService.upsert(this.signalId, this.bucketName, memoryId, data, when);
   }
   async removeMemoryData(memoryId: string): Promise<void> {
-    await ioc.memoryDbService.softRemove(this.signalId, this.bucketName, memoryId);
+    await ioc.memoryDataService.softRemove(this.signalId, this.bucketName, memoryId);
   }
   async *listMemoryData(): AsyncGenerator<{ memoryId: string; data: MemoryData }> {
-    const rows = await ioc.memoryDbService.listEntries(this.signalId, this.bucketName);
+    const rows = await ioc.memoryDataService.listEntries(this.signalId, this.bucketName);
     for (const row of rows) {
       yield { memoryId: row.memoryId, data: row.payload };
     }
@@ -408,7 +408,7 @@ PersistRecentAdapter.usePersistRecentAdapter(class implements IPersistRecentInst
     await waitForInfra();
   }
   async readRecentData(): Promise<RecentData> {
-    const row = await ioc.recentDbService.findByContext(
+    const row = await ioc.recentDataService.findByContext(
       this.symbol,
       this.strategyName,
       this.exchangeName,
@@ -418,7 +418,7 @@ PersistRecentAdapter.usePersistRecentAdapter(class implements IPersistRecentInst
     return row ? row.payload : null;
   }
   async writeRecentData(signalRow: NonNullable<RecentData>, when: Date): Promise<void> {
-    await ioc.recentDbService.upsert(
+    await ioc.recentDataService.upsert(
       this.symbol,
       this.strategyName,
       this.exchangeName,
@@ -442,11 +442,11 @@ PersistStateAdapter.usePersistStateAdapter(class implements IPersistStateInstanc
     await waitForInfra();
   }
   async readStateData(): Promise<StateData | null> {
-    const row = await ioc.stateDbService.findByContext(this.signalId, this.bucketName);
+    const row = await ioc.stateDataService.findByContext(this.signalId, this.bucketName);
     return row ? row.payload : null;
   }
   async writeStateData(data: StateData, when: Date): Promise<void> {
-    await ioc.stateDbService.upsert(this.signalId, this.bucketName, data, when);
+    await ioc.stateDataService.upsert(this.signalId, this.bucketName, data, when);
   }
   dispose(): void { void 0; }
 });
@@ -466,11 +466,11 @@ PersistSessionAdapter.usePersistSessionAdapter(class implements IPersistSessionI
     await waitForInfra();
   }
   async readSessionData(): Promise<SessionData | null> {
-    const row = await ioc.sessionDbService.findByContext(this.strategyName, this.exchangeName, this.frameName, this.symbol, this.backtest);
+    const row = await ioc.sessionDataService.findByContext(this.strategyName, this.exchangeName, this.frameName, this.symbol, this.backtest);
     return row ? row.payload : null;
   }
   async writeSessionData(data: SessionData, when: Date): Promise<void> {
-    await ioc.sessionDbService.upsert(this.strategyName, this.exchangeName, this.frameName, this.symbol, this.backtest, data, when);
+    await ioc.sessionDataService.upsert(this.strategyName, this.exchangeName, this.frameName, this.symbol, this.backtest, data, when);
   }
   dispose(): void { void 0; }
 });

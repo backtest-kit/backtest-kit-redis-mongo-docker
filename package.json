@@ -41,6 +41,7 @@
     "@backtest-kit/ui": "15.4.0",
     "@types/lodash": "4.17.24",
     "agent-swarm-kit": "5.1.0",
+    "minio": "8.0.2",
     "backtest-kit": "15.4.0",
     "dayjs": "1.11.20",
     "di-factory": "1.0.9",
