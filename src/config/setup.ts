@@ -13,6 +13,7 @@ import {
   IntervalData,
   RecentData,
   StateData,
+  DictionaryData,
   SessionData,
   ISignalRow,
   IScheduledSignalRow,
@@ -46,6 +47,8 @@ import {
   IPersistRecentInstance,
   PersistStateAdapter,
   IPersistStateInstance,
+  PersistDictionaryAdapter,
+  IPersistDictionaryInstance,
   PersistSessionAdapter,
   IPersistSessionInstance,
 } from "backtest-kit";
@@ -451,7 +454,26 @@ PersistStateAdapter.usePersistStateAdapter(class implements IPersistStateInstanc
   dispose(): void { void 0; }
 });
 
-PersistSessionAdapter.usePersistSessionAdapter(class implements IPersistSessionInstance {
+PersistDictionaryAdapter.usePersistDictionaryAdapter(class implements IPersistDictionaryInstance {
+  constructor(
+    readonly signalId: string,
+    readonly dictionaryName: string,
+  ) {}
+  async waitForInit(initial: boolean) {
+    if (!initial) {
+      return;
+    }
+    await waitForInfra();
+  }
+  async readDictionaryData(): Promise<DictionaryData | null> {
+    const row = await ioc.dictionaryDbService.findByContext(this.signalId, this.dictionaryName);
+    return row ? row.payload : null;
+  }
+  async writeDictionaryData(data: DictionaryData, when: Date): Promise<void> {
+    await ioc.dictionaryDbService.upsert(this.signalId, this.dictionaryName, data, when);
+  }
+  dispose(): void { void 0; }
+});PersistSessionAdapter.usePersistSessionAdapter(class implements IPersistSessionInstance {
   constructor(
     readonly strategyName: string,
     readonly exchangeName: string,
