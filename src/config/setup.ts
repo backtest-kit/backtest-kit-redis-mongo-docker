@@ -13,6 +13,8 @@ import {
   IntervalData,
   RecentData,
   StateData,
+  BudgetData,
+  BudgetRecordKey,
   DictionaryData,
   SessionData,
   ISignalRow,
@@ -47,6 +49,8 @@ import {
   IPersistRecentInstance,
   PersistStateAdapter,
   IPersistStateInstance,
+  PersistBudgetAdapter,
+  IPersistBudgetInstance,
   PersistDictionaryAdapter,
   IPersistDictionaryInstance,
   PersistSessionAdapter,
@@ -68,6 +72,7 @@ const INTERVAL_MINUTES: Record<CandleInterval, number> = {
   "4h": 240,
   "6h": 360,
   "8h": 480,
+  "12h": 720,
   "1d": 1440,
 };
 
@@ -450,6 +455,27 @@ PersistStateAdapter.usePersistStateAdapter(class implements IPersistStateInstanc
   }
   async writeStateData(data: StateData, when: Date): Promise<void> {
     await ioc.stateDbService.upsert(this.signalId, this.bucketName, data, when);
+  }
+  dispose(): void { void 0; }
+});
+
+PersistBudgetAdapter.usePersistBudgetAdapter(class implements IPersistBudgetInstance {
+  constructor(
+    readonly key: BudgetRecordKey,
+    readonly name: string,
+  ) {}
+  async waitForInit(initial: boolean) {
+    if (!initial) {
+      return;
+    }
+    await waitForInfra();
+  }
+  async readBudgetData(): Promise<BudgetData | null> {
+    const row = await ioc.budgetDbService.findByContext(this.key, this.name);
+    return row ? row.payload : null;
+  }
+  async writeBudgetData(data: BudgetData, when: Date): Promise<void> {
+    await ioc.budgetDbService.upsert(this.key, this.name, data, when);
   }
   dispose(): void { void 0; }
 });

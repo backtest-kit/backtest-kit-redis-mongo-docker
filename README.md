@@ -94,6 +94,7 @@ PersistXAdapter.usePersistXAdapter(class implements IPersistXInstance {
 | **Memory** | `memory-items` | `(signalId, bucketName, memoryId)` | Per-signal memory store (soft-delete) |
 | **Recent** | `recent-items` | `(symbol, strategyName, exchangeName, frameName, backtest)` | Last public signal per context |
 | **State** | `state-items` | `(signalId, bucketName)` | Per-signal state buckets |
+| **Budget** | `budget-items` | `(strategyName, exchangeName, frameName, backtest, name)` | Shared balance journal per strategy run |
 | **Session** | `session-items` | `(strategyName, exchangeName, frameName)` | One session per running strategy |
 
 
