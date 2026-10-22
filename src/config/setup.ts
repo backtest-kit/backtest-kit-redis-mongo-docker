@@ -14,7 +14,6 @@ import {
   RecentData,
   StateData,
   BudgetData,
-  BudgetRecordKey,
   DictionaryData,
   SessionData,
   ISignalRow,
@@ -58,6 +57,13 @@ import {
 } from "backtest-kit";
 import ioc from "../lib";
 import { singleshot } from "functools-kit";
+
+type BudgetRecordKey = {
+  strategyName: string;
+  exchangeName: string;
+  frameName: string;
+  backtest: boolean;
+};
 
 const MS_PER_MINUTE = 60_000;
 

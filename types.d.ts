@@ -1,7 +1,7 @@
 import * as functools_kit from 'functools-kit';
 import * as mongoose from 'mongoose';
 import { Redis } from 'ioredis';
-import { CandleInterval, ISignalRow, IScheduledSignalRow, RiskData, PartialData, BreakevenData, IStorageSignalRow, NotificationModel, ILogEntry, MeasureData, IntervalData, MemoryData, IPublicSignalRow, StateData, SessionData } from 'backtest-kit';
+import { CandleInterval, ISignalRow, IScheduledSignalRow, StrategyData, RiskData, PartialData, BreakevenData, IStorageSignalRow, NotificationModel, ILogEntry, MeasureData, IntervalData, MemoryData, IPublicSignalRow, StateData, BudgetData, DictionaryData, SessionData } from 'backtest-kit';
 
 interface ILogger {
     log(topic: string, ...args: any[]): void;
@@ -192,6 +192,59 @@ declare class ScheduleCacheService extends ScheduleCacheService_base {
     hasScheduleId(symbol: string, strategyName: string, exchangeName: string): Promise<boolean>;
     getScheduleId(symbol: string, strategyName: string, exchangeName: string): Promise<string | null>;
     setScheduleId(row: IScheduleRow): Promise<string>;
+}
+
+interface IStrategyDto {
+    symbol: string;
+    strategyName: string;
+    exchangeName: string;
+    payload: StrategyData;
+}
+interface IStrategyRow extends IStrategyDto {
+    id: string;
+    createDate: Date;
+    updatedDate: Date;
+}
+
+declare const StrategyCacheService_base: (new () => {
+    readonly loggerService: LoggerService;
+    readonly connectionKey: string;
+    readonly ttlExpireSeconds: number;
+    _getItemKey(key: string): string;
+    set(key: string, value: unknown): Promise<void>;
+    get(key: string | null): Promise<unknown | null>;
+    delete(key: string): Promise<void>;
+    has(key: string): Promise<boolean>;
+    clear(): Promise<void>;
+    toArray(): Promise<[string, unknown][]>;
+    iterate(): AsyncIterableIterator<readonly [string, unknown]>;
+    keys(): AsyncIterableIterator<string>;
+    values(): AsyncIterableIterator<unknown>;
+    size(): Promise<number>;
+}) & Omit<{
+    new (connectionKey: string, ttlExpireSeconds?: number): {
+        readonly loggerService: LoggerService;
+        readonly connectionKey: string;
+        readonly ttlExpireSeconds: number;
+        _getItemKey(key: string): string;
+        set(key: string, value: unknown): Promise<void>;
+        get(key: string | null): Promise<unknown | null>;
+        delete(key: string): Promise<void>;
+        has(key: string): Promise<boolean>;
+        clear(): Promise<void>;
+        toArray(): Promise<[string, unknown][]>;
+        iterate(): AsyncIterableIterator<readonly [string, unknown]>;
+        keys(): AsyncIterableIterator<string>;
+        values(): AsyncIterableIterator<unknown>;
+        size(): Promise<number>;
+    };
+}, "prototype">;
+declare class StrategyCacheService extends StrategyCacheService_base {
+    readonly loggerService: LoggerService;
+    private _cacheKey;
+    hasStrategyId(symbol: string, strategyName: string, exchangeName: string): Promise<boolean>;
+    getStrategyId(symbol: string, strategyName: string, exchangeName: string): Promise<string | null>;
+    setStrategyId(row: IStrategyRow): Promise<string>;
 }
 
 interface IRiskDto {
@@ -783,10 +836,127 @@ declare class StateCacheService extends StateCacheService_base {
     setStateId(row: IStateRow): Promise<string>;
 }
 
+interface IBudgetDto {
+    strategyName: string;
+    exchangeName: string;
+    frameName: string;
+    backtest: boolean;
+    name: string;
+    payload: BudgetData;
+    when: number;
+}
+interface IBudgetRow extends IBudgetDto {
+    id: string;
+    createDate: Date;
+    updatedDate: Date;
+}
+
+type BudgetRecordKey$1 = {
+    strategyName: string;
+    exchangeName: string;
+    frameName: string;
+    backtest: boolean;
+};
+declare const BudgetCacheService_base: (new () => {
+    readonly loggerService: LoggerService;
+    readonly connectionKey: string;
+    readonly ttlExpireSeconds: number;
+    _getItemKey(key: string): string;
+    set(key: string, value: unknown): Promise<void>;
+    get(key: string | null): Promise<unknown | null>;
+    delete(key: string): Promise<void>;
+    has(key: string): Promise<boolean>;
+    clear(): Promise<void>;
+    toArray(): Promise<[string, unknown][]>;
+    iterate(): AsyncIterableIterator<readonly [string, unknown]>;
+    keys(): AsyncIterableIterator<string>;
+    values(): AsyncIterableIterator<unknown>;
+    size(): Promise<number>;
+}) & Omit<{
+    new (connectionKey: string, ttlExpireSeconds?: number): {
+        readonly loggerService: LoggerService;
+        readonly connectionKey: string;
+        readonly ttlExpireSeconds: number;
+        _getItemKey(key: string): string;
+        set(key: string, value: unknown): Promise<void>;
+        get(key: string | null): Promise<unknown | null>;
+        delete(key: string): Promise<void>;
+        has(key: string): Promise<boolean>;
+        clear(): Promise<void>;
+        toArray(): Promise<[string, unknown][]>;
+        iterate(): AsyncIterableIterator<readonly [string, unknown]>;
+        keys(): AsyncIterableIterator<string>;
+        values(): AsyncIterableIterator<unknown>;
+        size(): Promise<number>;
+    };
+}, "prototype">;
+declare class BudgetCacheService extends BudgetCacheService_base {
+    readonly loggerService: LoggerService;
+    private _cacheKey;
+    hasBudgetId(key: BudgetRecordKey$1, name: string): Promise<boolean>;
+    getBudgetId(key: BudgetRecordKey$1, name: string): Promise<string | null>;
+    setBudgetId(row: IBudgetRow): Promise<string>;
+}
+
+interface IDictionaryDto {
+    signalId: string;
+    dictionaryName: string;
+    payload: DictionaryData;
+    when: number;
+}
+interface IDictionaryRow extends IDictionaryDto {
+    id: string;
+    createDate: Date;
+    updatedDate: Date;
+}
+
+declare const DictionaryCacheService_base: (new () => {
+    readonly loggerService: LoggerService;
+    readonly connectionKey: string;
+    readonly ttlExpireSeconds: number;
+    _getItemKey(key: string): string;
+    set(key: string, value: unknown): Promise<void>;
+    get(key: string | null): Promise<unknown | null>;
+    delete(key: string): Promise<void>;
+    has(key: string): Promise<boolean>;
+    clear(): Promise<void>;
+    toArray(): Promise<[string, unknown][]>;
+    iterate(): AsyncIterableIterator<readonly [string, unknown]>;
+    keys(): AsyncIterableIterator<string>;
+    values(): AsyncIterableIterator<unknown>;
+    size(): Promise<number>;
+}) & Omit<{
+    new (connectionKey: string, ttlExpireSeconds?: number): {
+        readonly loggerService: LoggerService;
+        readonly connectionKey: string;
+        readonly ttlExpireSeconds: number;
+        _getItemKey(key: string): string;
+        set(key: string, value: unknown): Promise<void>;
+        get(key: string | null): Promise<unknown | null>;
+        delete(key: string): Promise<void>;
+        has(key: string): Promise<boolean>;
+        clear(): Promise<void>;
+        toArray(): Promise<[string, unknown][]>;
+        iterate(): AsyncIterableIterator<readonly [string, unknown]>;
+        keys(): AsyncIterableIterator<string>;
+        values(): AsyncIterableIterator<unknown>;
+        size(): Promise<number>;
+    };
+}, "prototype">;
+declare class DictionaryCacheService extends DictionaryCacheService_base {
+    readonly loggerService: LoggerService;
+    private _cacheKey;
+    hasDictionaryId(signalId: string, dictionaryName: string): Promise<boolean>;
+    getDictionaryId(signalId: string, dictionaryName: string): Promise<string | null>;
+    setDictionaryId(row: IDictionaryRow): Promise<string>;
+}
+
 interface ISessionDto {
     strategyName: string;
     exchangeName: string;
     frameName: string;
+    symbol: string;
+    backtest: boolean;
     payload: SessionData;
     when: number;
 }
@@ -832,8 +1002,8 @@ declare const SessionCacheService_base: (new () => {
 declare class SessionCacheService extends SessionCacheService_base {
     readonly loggerService: LoggerService;
     private _cacheKey;
-    hasSessionId(strategyName: string, exchangeName: string, frameName: string): Promise<boolean>;
-    getSessionId(strategyName: string, exchangeName: string, frameName: string): Promise<string | null>;
+    hasSessionId(strategyName: string, exchangeName: string, frameName: string, symbol: string, backtest: boolean): Promise<boolean>;
+    getSessionId(strategyName: string, exchangeName: string, frameName: string, symbol: string, backtest: boolean): Promise<string | null>;
     setSessionId(row: ISessionRow): Promise<string>;
 }
 
@@ -962,6 +1132,48 @@ declare class ScheduleDbService extends ScheduleDbService_base {
     readonly scheduleCacheService: ScheduleCacheService;
     upsert: (symbol: string, strategyName: string, exchangeName: string, payload: IScheduledSignalRow | null) => Promise<void>;
     findByContext: (symbol: string, strategyName: string, exchangeName: string) => Promise<IScheduleRow | null>;
+}
+
+declare const StrategyDbService_base: (new () => {
+    readonly loggerService: LoggerService;
+    readonly TargetModel: mongoose.Model<any>;
+    create(dto: object): Promise<any>;
+    update(id: string, dto: object): Promise<any>;
+    findById(id: string): Promise<any>;
+    findByFilter(filterData: object, sort?: object): Promise<any>;
+    findAll(filterData?: object, limit?: number): Promise<any[]>;
+    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
+    paginate(filterData: object, pagination: {
+        limit: number;
+        offset: number;
+    }, sort?: object): Promise<{
+        rows: any[];
+        total: number;
+    }>;
+}) & Omit<{
+    new (TargetModel: mongoose.Model<any>): {
+        readonly loggerService: LoggerService;
+        readonly TargetModel: mongoose.Model<any>;
+        create(dto: object): Promise<any>;
+        update(id: string, dto: object): Promise<any>;
+        findById(id: string): Promise<any>;
+        findByFilter(filterData: object, sort?: object): Promise<any>;
+        findAll(filterData?: object, limit?: number): Promise<any[]>;
+        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
+        paginate(filterData: object, pagination: {
+            limit: number;
+            offset: number;
+        }, sort?: object): Promise<{
+            rows: any[];
+            total: number;
+        }>;
+    };
+}, "prototype">;
+declare class StrategyDbService extends StrategyDbService_base {
+    readonly loggerService: LoggerService;
+    readonly strategyCacheService: StrategyCacheService;
+    upsert: (symbol: string, strategyName: string, exchangeName: string, payload: StrategyData | null) => Promise<void>;
+    findByContext: (symbol: string, strategyName: string, exchangeName: string) => Promise<IStrategyRow | null>;
 }
 
 declare const RiskDbService_base: (new () => {
@@ -1437,6 +1649,96 @@ declare class StateDbService extends StateDbService_base {
     findByContext: (signalId: string, bucketName: string) => Promise<IStateRow | null>;
 }
 
+type BudgetRecordKey = {
+    strategyName: string;
+    exchangeName: string;
+    frameName: string;
+    backtest: boolean;
+};
+declare const BudgetDbService_base: (new () => {
+    readonly loggerService: LoggerService;
+    readonly TargetModel: mongoose.Model<any>;
+    create(dto: object): Promise<any>;
+    update(id: string, dto: object): Promise<any>;
+    findById(id: string): Promise<any>;
+    findByFilter(filterData: object, sort?: object): Promise<any>;
+    findAll(filterData?: object, limit?: number): Promise<any[]>;
+    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
+    paginate(filterData: object, pagination: {
+        limit: number;
+        offset: number;
+    }, sort?: object): Promise<{
+        rows: any[];
+        total: number;
+    }>;
+}) & Omit<{
+    new (TargetModel: mongoose.Model<any>): {
+        readonly loggerService: LoggerService;
+        readonly TargetModel: mongoose.Model<any>;
+        create(dto: object): Promise<any>;
+        update(id: string, dto: object): Promise<any>;
+        findById(id: string): Promise<any>;
+        findByFilter(filterData: object, sort?: object): Promise<any>;
+        findAll(filterData?: object, limit?: number): Promise<any[]>;
+        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
+        paginate(filterData: object, pagination: {
+            limit: number;
+            offset: number;
+        }, sort?: object): Promise<{
+            rows: any[];
+            total: number;
+        }>;
+    };
+}, "prototype">;
+declare class BudgetDbService extends BudgetDbService_base {
+    readonly loggerService: LoggerService;
+    readonly budgetCacheService: BudgetCacheService;
+    upsert: (key: BudgetRecordKey, name: string, payload: BudgetData, when: Date) => Promise<void>;
+    findByContext: (key: BudgetRecordKey, name: string) => Promise<IBudgetRow | null>;
+}
+
+declare const DictionaryDbService_base: (new () => {
+    readonly loggerService: LoggerService;
+    readonly TargetModel: mongoose.Model<any>;
+    create(dto: object): Promise<any>;
+    update(id: string, dto: object): Promise<any>;
+    findById(id: string): Promise<any>;
+    findByFilter(filterData: object, sort?: object): Promise<any>;
+    findAll(filterData?: object, limit?: number): Promise<any[]>;
+    iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
+    paginate(filterData: object, pagination: {
+        limit: number;
+        offset: number;
+    }, sort?: object): Promise<{
+        rows: any[];
+        total: number;
+    }>;
+}) & Omit<{
+    new (TargetModel: mongoose.Model<any>): {
+        readonly loggerService: LoggerService;
+        readonly TargetModel: mongoose.Model<any>;
+        create(dto: object): Promise<any>;
+        update(id: string, dto: object): Promise<any>;
+        findById(id: string): Promise<any>;
+        findByFilter(filterData: object, sort?: object): Promise<any>;
+        findAll(filterData?: object, limit?: number): Promise<any[]>;
+        iterate(filterData?: object, sort?: object): AsyncGenerator<any, void, unknown>;
+        paginate(filterData: object, pagination: {
+            limit: number;
+            offset: number;
+        }, sort?: object): Promise<{
+            rows: any[];
+            total: number;
+        }>;
+    };
+}, "prototype">;
+declare class DictionaryDbService extends DictionaryDbService_base {
+    readonly loggerService: LoggerService;
+    readonly dictionaryCacheService: DictionaryCacheService;
+    upsert: (signalId: string, dictionaryName: string, payload: DictionaryData, when: Date) => Promise<void>;
+    findByContext: (signalId: string, dictionaryName: string) => Promise<IDictionaryRow | null>;
+}
+
 declare const SessionDbService_base: (new () => {
     readonly loggerService: LoggerService;
     readonly TargetModel: mongoose.Model<any>;
@@ -1475,14 +1777,15 @@ declare const SessionDbService_base: (new () => {
 declare class SessionDbService extends SessionDbService_base {
     readonly loggerService: LoggerService;
     readonly sessionCacheService: SessionCacheService;
-    upsert: (strategyName: string, exchangeName: string, frameName: string, payload: SessionData, when: Date) => Promise<void>;
-    findByContext: (strategyName: string, exchangeName: string, frameName: string) => Promise<ISessionRow | null>;
+    upsert: (strategyName: string, exchangeName: string, frameName: string, symbol: string, backtest: boolean, payload: SessionData, when: Date) => Promise<void>;
+    findByContext: (strategyName: string, exchangeName: string, frameName: string, symbol: string, backtest: boolean) => Promise<ISessionRow | null>;
 }
 
 declare const ioc: {
     candleDbService: CandleDbService;
     signalDbService: SignalDbService;
     scheduleDbService: ScheduleDbService;
+    strategyDbService: StrategyDbService;
     riskDbService: RiskDbService;
     partialDbService: PartialDbService;
     breakevenDbService: BreakevenDbService;
@@ -1494,10 +1797,13 @@ declare const ioc: {
     memoryDbService: MemoryDbService;
     recentDbService: RecentDbService;
     stateDbService: StateDbService;
+    budgetDbService: BudgetDbService;
+    dictionaryDbService: DictionaryDbService;
     sessionDbService: SessionDbService;
     candleCacheService: CandleCacheService;
     signalCacheService: SignalCacheService;
     scheduleCacheService: ScheduleCacheService;
+    strategyCacheService: StrategyCacheService;
     riskCacheService: RiskCacheService;
     partialCacheService: PartialCacheService;
     breakevenCacheService: BreakevenCacheService;
@@ -1509,6 +1815,8 @@ declare const ioc: {
     memoryCacheService: MemoryCacheService;
     recentCacheService: RecentCacheService;
     stateCacheService: StateCacheService;
+    budgetCacheService: BudgetCacheService;
+    dictionaryCacheService: DictionaryCacheService;
     sessionCacheService: SessionCacheService;
     loggerService: LoggerService;
     mongoService: MongooseService;

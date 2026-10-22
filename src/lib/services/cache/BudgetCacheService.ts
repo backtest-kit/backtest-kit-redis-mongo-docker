@@ -3,7 +3,13 @@ import { inject } from "../../core/di";
 import { TYPES } from "../../core/types";
 import LoggerService from "../base/LoggerService";
 import { IBudgetRow } from "../../../schema/Budget.schema";
-import { BudgetRecordKey } from "backtest-kit";
+
+type BudgetRecordKey = {
+  strategyName: string;
+  exchangeName: string;
+  frameName: string;
+  backtest: boolean;
+};
 
 const REDIS_KEY = "budget_cache";
 
